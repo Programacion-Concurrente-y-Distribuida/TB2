@@ -1,27 +1,21 @@
-// union_y_limpieza.go
-// -------------------
-// Une todos los .csv de la carpeta /data y aplica limpieza de datos
-// sobre el dataset de Ordenes de Compra - Catalogos Electronicos (PERU COMPRAS).
-//
-// Salida: data/dataset_limpio.csv
-// Ejecutar: go run union_y_limpieza.go
-
 package main
 
 import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // ─────────────────────────────────────────────
-// COLUMNAS OFICIALES DEL DATASET
+// CONFIGURACIÓN Y COLUMNAS
 // ─────────────────────────────────────────────
 var columnasEsperadas = []string{
 	"FECHA_PROCESO", "RUC_PROVEEDOR", "PROVEEDOR",
@@ -34,12 +28,22 @@ var columnasEsperadas = []string{
 	"DESCRIPCION_CESION_DERECHOS", "ACUERDO_MARCO",
 }
 
+// Estructura para pasar trabajos a los workers
+type Job struct {
+	Path string
+}
+
+// Estructura para recibir resultados de los workers
+type Result struct {
+	Rows  [][]string
+	Error error
+	File  string
+}
+
 // ─────────────────────────────────────────────
-// UTILIDADES
+// UTILIDADES DE LIMPIEZA
 // ─────────────────────────────────────────────
 
-// latin1ToUTF8 convierte bytes latin-1 a UTF-8.
-// Latin-1 = Unicode 0-255, cada byte > 127 se codifica en 2 bytes UTF-8.
 func latin1ToUTF8(b []byte) []byte {
 	var buf bytes.Buffer
 	for _, c := range b {
@@ -53,7 +57,6 @@ func latin1ToUTF8(b []byte) []byte {
 	return buf.Bytes()
 }
 
-// normalizarCol estandariza un nombre de columna a ASCII puro sin tildes.
 func normalizarCol(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ToUpper(s)
@@ -69,32 +72,20 @@ func normalizarCol(s string) string {
 		} else if r <= 127 {
 			sb.WriteRune(r)
 		}
-		// caracteres no-ASCII no mapeados se descartan
 	}
-	result := sb.String()
-	for strings.Contains(result, "__") {
-		result = strings.ReplaceAll(result, "__", "_")
+	res := sb.String()
+	for strings.Contains(res, "__") {
+		res = strings.ReplaceAll(res, "__", "_")
 	}
-	return result
+	return res
 }
 
-// esNulo retorna true si el valor está vacío o solo tiene espacios.
-func esNulo(s string) bool {
-	return strings.TrimSpace(s) == ""
-}
-
-// parsearFecha intenta convertir un string a time.Time con varios formatos.
 func parsearFecha(s string) (time.Time, bool) {
-	if esNulo(s) {
+	s = strings.TrimSpace(s)
+	if s == "" {
 		return time.Time{}, false
 	}
-	formatos := []string{
-		"2006-01-02 15:04:05",
-		"2006-01-02",
-		"02/01/2006",
-		"2006/01/02",
-	}
-	s = strings.TrimSpace(s)
+	formatos := []string{"2006-01-02 15:04:05", "2006-01-02", "02/01/2006", "2006/01/02"}
 	for _, f := range formatos {
 		if t, err := time.Parse(f, s); err == nil {
 			return t, true
@@ -103,436 +94,219 @@ func parsearFecha(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// parsearFloat limpia y convierte un string a float64.
 func parsearFloat(s string) (float64, bool) {
-	if esNulo(s) {
+	s = strings.TrimSpace(s)
+	if s == "" {
 		return 0, false
 	}
-	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, ",", ".")
 	s = strings.ReplaceAll(s, " ", "")
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return v, err == nil
 }
 
-// formatearInt formatea un entero con separador de miles (coma).
-func formatearInt(n int) string {
-	s := strconv.Itoa(n)
-	neg := false
-	if n < 0 {
-		s = strconv.Itoa(-n)
-		neg = true
+// ─────────────────────────────────────────────
+// WORKER LOGIC
+// ─────────────────────────────────────────────
+
+func worker(id int, jobs <-chan Job, results chan<- Result, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for job := range jobs {
+		rows, err := procesarArchivo(job.Path)
+		results <- Result{Rows: rows, Error: err, File: filepath.Base(job.Path)}
 	}
-	// insertar comas
-	var result []byte
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			result = append(result, ',')
-		}
-		result = append(result, byte(c))
-	}
-	if neg {
-		return "-" + string(result)
-	}
-	return string(result)
 }
 
-// leerCSV lee un archivo CSV (latin-1) y devuelve headers normalizados + filas
-// filtradas a las columnas esperadas.
-func leerCSV(ruta string) ([]string, [][]string, error) {
-	rawBytes, err := os.ReadFile(ruta)
+func procesarArchivo(ruta string) ([][]string, error) {
+	f, err := os.Open(ruta)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	defer f.Close()
 
-	// Convertir de latin-1 a UTF-8
-	utf8Bytes := latin1ToUTF8(rawBytes)
+	// Leer todo y convertir a UTF-8
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	utf8Content := latin1ToUTF8(content)
 
-	reader := csv.NewReader(bytes.NewReader(utf8Bytes))
+	reader := csv.NewReader(bytes.NewReader(utf8Content))
 	reader.Comma = ';'
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1
 
 	records, err := reader.ReadAll()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if len(records) == 0 {
-		return nil, nil, nil
-	}
-
-	// Normalizar cabecera
-	rawHeaders := records[0]
-	headers := make([]string, len(rawHeaders))
-	for i, h := range rawHeaders {
-		headers[i] = normalizarCol(h)
+	if len(records) < 2 {
+		return nil, nil
 	}
 
-	// Mapear columnas disponibles
-	colIdx := make(map[string]int)
+	// Identificar indices de columnas
+	headers := records[0]
+	colIdxMap := make(map[string]int)
 	for i, h := range headers {
-		colIdx[h] = i
+		colIdxMap[normalizarCol(h)] = i
 	}
 
-	// Filtrar a columnas esperadas
-	var filteredCols []string
-	var filteredIdx []int
-	for _, ec := range columnasEsperadas {
-		if idx, ok := colIdx[ec]; ok {
-			filteredCols = append(filteredCols, ec)
-			filteredIdx = append(filteredIdx, idx)
-		}
-	}
-
-	// Construir filas
-	rows := make([][]string, 0, len(records)-1)
+	var cleanedRows [][]string
 	for _, record := range records[1:] {
-		row := make([]string, len(filteredCols))
-		for i, idx := range filteredIdx {
-			if idx < len(record) {
-				row[i] = record[idx]
+		// 1. Filtrar solo las 19 columnas esperadas + 1 para ANO_MES
+		newRow := make([]string, len(columnasEsperadas)+1)
+		
+		// 2. Limpieza de campos
+		isValid := true
+		var fechaFormalizacion time.Time
+
+		for i, colName := range columnasEsperadas {
+			originalIdx, exists := colIdxMap[colName]
+			val := ""
+			if exists && originalIdx < len(record) {
+				val = strings.TrimSpace(record[originalIdx])
 			}
+
+			// Transformaciones específicas
+			switch colName {
+			case "TOTAL":
+				if v, ok := parsearFloat(val); ok && v > 0 {
+					val = strconv.FormatFloat(v, 'f', 2, 64)
+				} else {
+					isValid = false // Descartar si el total es inválido o <= 0
+				}
+			case "SUB_TOTAL", "IGV":
+				if v, ok := parsearFloat(val); ok {
+					val = strconv.FormatFloat(v, 'f', 2, 64)
+				}
+			case "FECHA_FORMALIZACION":
+				if t, ok := parsearFecha(val); ok {
+					val = t.Format("2006-01-02 15:04:05")
+					fechaFormalizacion = t
+				}
+			case "FECHA_PROCESO", "FECHA_ULTIMO_ESTADO":
+				if t, ok := parsearFecha(val); ok {
+					val = t.Format("2006-01-02 15:04:05")
+				}
+			}
+
+			// Normalizar RUC a 11 dígitos
+			if strings.Contains(colName, "RUC") && val != "" {
+				for len(val) < 11 {
+					val = "0" + val
+				}
+			}
+
+			newRow[i] = val
 		}
-		rows = append(rows, row)
+
+		if isValid {
+			// Crear columna ANO_MES (en la última posición)
+			if !fechaFormalizacion.IsZero() {
+				newRow[len(columnasEsperadas)] = fechaFormalizacion.Format("2006-01")
+			}
+			cleanedRows = append(cleanedRows, newRow)
+		}
 	}
 
-	return filteredCols, rows, nil
+	return cleanedRows, nil
 }
 
 // ─────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────
+
 func main() {
-	baseDir, _ := os.Getwd()
-	dataDir := filepath.Join(baseDir, "data")
-	salida := filepath.Join(dataDir, "dataset_limpio.csv")
-	sep := strings.Repeat("=", 60)
+	start := time.Now()
+	
+	// Configuración de concurrencia: puedes ajustar este número para tus pruebas de estrés
+	// El valor recomendado es runtime.NumCPU()
+	numWorkers := runtime.NumCPU()
+	
+	fmt.Println("============================================================")
+	fmt.Printf(" [PCD] Iniciando Limpieza Concurrente con %d Workers\n", numWorkers)
+	fmt.Println("============================================================")
 
-	// ──────────────────────────────────────────────────────────
-	// PASO 1 - Union de todos los CSV
-	// ──────────────────────────────────────────────────────────
-	fmt.Println(sep)
-	fmt.Println("  PASO 1 - Leyendo y uniendo todos los archivos CSV")
-	fmt.Println(sep)
+	dataDir := "data"
+	// Si no existe 'data' en el directorio actual, probamos un nivel arriba
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		dataDir = "../data"
+	}
+	
+	outputFile := filepath.Join(filepath.Dir(dataDir), "dataset_limpio.csv")
 
-	entries, err := os.ReadDir(dataDir)
-	if err != nil {
-		fmt.Printf("Error leyendo directorio: %v\n", err)
-		os.Exit(1)
+	files, _ := filepath.Glob(filepath.Join(dataDir, "*.csv"))
+	if len(files) == 0 {
+		fmt.Println("Error: No se encontraron archivos .csv en", dataDir)
+		return
 	}
 
-	var csvFiles []string
-	for _, e := range entries {
-		name := e.Name()
-		if !e.IsDir() && strings.ToLower(filepath.Ext(name)) == ".csv" && name != "dataset_limpio.csv" {
-			csvFiles = append(csvFiles, filepath.Join(dataDir, name))
-		}
-	}
-	sort.Strings(csvFiles)
+	jobs := make(chan Job, len(files))
+	results := make(chan Result, len(files))
+	var wg sync.WaitGroup
 
-	if len(csvFiles) == 0 {
-		fmt.Printf("No se encontraron archivos .csv en: %s\n", dataDir)
-		os.Exit(1)
+	// 1. Iniciar Workers
+	for w := 1; w <= numWorkers; w++ {
+		wg.Add(1)
+		go worker(w, jobs, results, &wg)
 	}
 
-	var allHeaders []string
-	var allRows [][]string
-	headerIdx := make(map[string]int)
+	// 2. Enviar Trabajos
+	for _, file := range files {
+		jobs <- Job{Path: file}
+	}
+	close(jobs)
 
-	for _, csvPath := range csvFiles {
-		nombre := filepath.Base(csvPath)
-		headers, rows, err := leerCSV(csvPath)
-		if err != nil {
-			fmt.Printf("  [ERR] %-40s - ERROR: %v\n", nombre, err)
+	// 3. Recolectar resultados en paralelo con el procesamiento
+	var finalDataset [][]string
+	var mu sync.Mutex
+	var totalRecords int
+	
+	// Goroutine para esperar y cerrar resultados
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for res := range results {
+		if res.Error != nil {
+			fmt.Printf(" [ERR] %s: %v\n", res.File, res.Error)
 			continue
 		}
-
-		// Primera vez: establecer cabecera maestra
-		if allHeaders == nil {
-			allHeaders = headers
-			for i, h := range allHeaders {
-				headerIdx[h] = i
-			}
-		}
-
-		// Construir índice local del archivo
-		localIdx := make(map[string]int)
-		for i, h := range headers {
-			localIdx[h] = i
-		}
-
-		// Alinear filas a cabecera maestra
-		for _, row := range rows {
-			newRow := make([]string, len(allHeaders))
-			for i, h := range allHeaders {
-				if idx, ok := localIdx[h]; ok && idx < len(row) {
-					newRow[i] = row[idx]
-				}
-			}
-			allRows = append(allRows, newRow)
-		}
-
-		fmt.Printf("  [OK] %-40s %8s filas\n", nombre, formatearInt(len(rows)))
+		mu.Lock()
+		finalDataset = append(finalDataset, res.Rows...)
+		totalRecords += len(res.Rows)
+		mu.Unlock()
+		fmt.Printf(" [OK] %-35s | +%d filas\n", res.File, len(res.Rows))
 	}
 
-	fmt.Printf("\n  Total tras union: %s filas  |  %d columnas\n\n",
-		formatearInt(len(allRows)), len(allHeaders))
+	// 4. Guardar resultado final
+	fmt.Println("\n------------------------------------------------------------")
+	fmt.Printf(" Consolidados %d registros. Guardando...\n", totalRecords)
 
-	// ──────────────────────────────────────────────────────────
-	// PASO 2 - Diagnostico inicial
-	// ──────────────────────────────────────────────────────────
-	fmt.Println(sep)
-	fmt.Println("  PASO 2 - Diagnostico inicial")
-	fmt.Println(sep)
-	fmt.Println("\n[Columnas y valores nulos]")
-
-	totalRows := len(allRows)
-	nullCounts := make([]int, len(allHeaders))
-	for _, row := range allRows {
-		for i, val := range row {
-			if esNulo(val) {
-				nullCounts[i]++
-			}
-		}
-	}
-	for i, h := range allHeaders {
-		pct := float64(nullCounts[i]) / float64(totalRows) * 100
-		fmt.Printf("  %-40s nulos: %8s  (%5.1f%%)\n", h, formatearInt(nullCounts[i]), pct)
-	}
-
-	// ──────────────────────────────────────────────────────────
-	// PASO 3 - Limpieza de datos
-	// ──────────────────────────────────────────────────────────
-	fmt.Printf("\n%s\n", sep)
-	fmt.Println("  PASO 3 - Limpieza de datos")
-	fmt.Println(sep)
-
-	filasInicial := len(allRows)
-
-	// 3a. Eliminar columnas 100% vacias
-	antCols := len(allHeaders)
-	var newHeaders []string
-	var keepCols []int
-	for i, h := range allHeaders {
-		if nullCounts[i] < totalRows {
-			newHeaders = append(newHeaders, h)
-			keepCols = append(keepCols, i)
-		}
-	}
-	filtered := make([][]string, len(allRows))
-	for r, row := range allRows {
-		newRow := make([]string, len(newHeaders))
-		for ni, ci := range keepCols {
-			if ci < len(row) {
-				newRow[ni] = row[ci]
-			}
-		}
-		filtered[r] = newRow
-	}
-	allRows = filtered
-	allHeaders = newHeaders
-	// Recalcular headerIdx
-	headerIdx = make(map[string]int)
-	for i, h := range allHeaders {
-		headerIdx[h] = i
-	}
-	fmt.Printf("\n  [3a] Columnas 100%% vacias eliminadas: %d\n", antCols-len(allHeaders))
-	fmt.Printf("       Columnas restantes: %v\n", allHeaders)
-
-	// 3b. Eliminar duplicados
-	antes := len(allRows)
-	seen := make(map[string]bool, len(allRows))
-	var dedupRows [][]string
-	for _, row := range allRows {
-		key := strings.Join(row, "\x00")
-		if !seen[key] {
-			seen[key] = true
-			dedupRows = append(dedupRows, row)
-		}
-	}
-	allRows = dedupRows
-	fmt.Printf("\n  [3b] Duplicados eliminados: %s\n", formatearInt(antes-len(allRows)))
-
-	// 3c. Eliminar filas totalmente vacias
-	antes = len(allRows)
-	var nonEmpty [][]string
-	for _, row := range allRows {
-		allNull := true
-		for _, v := range row {
-			if !esNulo(v) {
-				allNull = false
-				break
-			}
-		}
-		if !allNull {
-			nonEmpty = append(nonEmpty, row)
-		}
-	}
-	allRows = nonEmpty
-	fmt.Printf("  [3c] Filas completamente vacias eliminadas: %s\n", formatearInt(antes-len(allRows)))
-
-	// 3d. Convertir columnas de fecha a datetime
-	var fechaCols []string
-	for _, h := range allHeaders {
-		if strings.Contains(h, "FECHA") {
-			fechaCols = append(fechaCols, h)
-		}
-	}
-	for _, col := range fechaCols {
-		idx := headerIdx[col]
-		for r, row := range allRows {
-			if !esNulo(row[idx]) {
-				if t, ok := parsearFecha(row[idx]); ok {
-					allRows[r][idx] = t.Format("2006-01-02 15:04:05")
-				} else {
-					allRows[r][idx] = ""
-				}
-			}
-		}
-	}
-	fmt.Printf("\n  [3d] Fechas convertidas a datetime: %v\n", fechaCols)
-
-	// 3e. Convertir columnas numericas
-	numColNames := []string{"SUB_TOTAL", "IGV", "TOTAL"}
-	var numCols []string
-	for _, c := range numColNames {
-		if _, ok := headerIdx[c]; ok {
-			numCols = append(numCols, c)
-		}
-	}
-	for _, col := range numCols {
-		idx := headerIdx[col]
-		for r, row := range allRows {
-			if !esNulo(row[idx]) {
-				if v, ok := parsearFloat(row[idx]); ok {
-					allRows[r][idx] = strconv.FormatFloat(v, 'f', 2, 64)
-				} else {
-					allRows[r][idx] = ""
-				}
-			}
-		}
-	}
-	fmt.Printf("  [3e] Columnas convertidas a numerico: %v\n", numCols)
-
-	// 3f. Eliminar filas con TOTAL nulo o <= 0
-	antes = len(allRows)
-	if tidx, ok := headerIdx["TOTAL"]; ok {
-		var validRows [][]string
-		for _, row := range allRows {
-			if !esNulo(row[tidx]) {
-				if v, err2 := strconv.ParseFloat(row[tidx], 64); err2 == nil && v > 0 {
-					validRows = append(validRows, row)
-				}
-			}
-		}
-		allRows = validRows
-	}
-	fmt.Printf("  [3f] Filas con TOTAL invalido (nulo/<=0): %s\n", formatearInt(antes-len(allRows)))
-
-	// 3g. Strip de espacios en columnas de texto
-	numericSet := map[string]bool{"SUB_TOTAL": true, "IGV": true, "TOTAL": true}
-	dateSet := map[string]bool{}
-	for _, c := range fechaCols {
-		dateSet[c] = true
-	}
-	textCount := 0
-	for _, h := range allHeaders {
-		if !numericSet[h] && !dateSet[h] {
-			textCount++
-		}
-	}
-	for r, row := range allRows {
-		for i, h := range allHeaders {
-			if !numericSet[h] && !dateSet[h] {
-				allRows[r][i] = strings.TrimSpace(row[i])
-			}
-		}
-	}
-	fmt.Printf("  [3g] Strip aplicado a %d columnas de texto\n", textCount)
-
-	// 3h. Normalizar RUCs a 11 digitos
-	for r, row := range allRows {
-		for i, h := range allHeaders {
-			if strings.Contains(h, "RUC") {
-				ruc := strings.TrimSpace(row[i])
-				for len(ruc) < 11 {
-					ruc = "0" + ruc
-				}
-				allRows[r][i] = ruc
-			}
-		}
-	}
-	fmt.Println("  [3h] RUCs normalizados a 11 digitos")
-
-	// 3i. Crear columna ANO_MES
-	if fidx, ok := headerIdx["FECHA_FORMALIZACION"]; ok {
-		allHeaders = append(allHeaders, "ANO_MES")
-		for r, row := range allRows {
-			anoMes := ""
-			if !esNulo(row[fidx]) {
-				if t, ok2 := parsearFecha(row[fidx]); ok2 {
-					anoMes = t.Format("2006-01")
-				}
-			}
-			allRows[r] = append(allRows[r], anoMes)
-		}
-		fmt.Println("  [3i] Columna ANO_MES creada desde FECHA_FORMALIZACION")
-	}
-
-	// ──────────────────────────────────────────────────────────
-	// PASO 4 - Resumen final
-	// ──────────────────────────────────────────────────────────
-	fmt.Printf("\n%s\n", sep)
-	fmt.Println("  PASO 4 - Resumen final")
-	fmt.Println(sep)
-	fmt.Printf("\n  Filas antes de la limpieza :  %10s\n", formatearInt(filasInicial))
-	fmt.Printf("  Filas despues de la limpieza: %10s\n", formatearInt(len(allRows)))
-	fmt.Printf("  Filas eliminadas (total)    : %10s\n", formatearInt(filasInicial-len(allRows)))
-	fmt.Printf("  Columnas finales            : %d\n", len(allHeaders))
-
-	fmt.Println("\n  Columnas del dataset final:")
-	finalNulls := make([]int, len(allHeaders))
-	for _, row := range allRows {
-		for i, v := range row {
-			if esNulo(v) {
-				finalNulls[i]++
-			}
-		}
-	}
-	for i, h := range allHeaders {
-		fmt.Printf("    %-40s nulos: %s\n", h, formatearInt(finalNulls[i]))
-	}
-
-	// ──────────────────────────────────────────────────────────
-	// PASO 5 - Guardar resultado
-	// ──────────────────────────────────────────────────────────
-	fmt.Printf("\n%s\n", sep)
-	fmt.Println("  PASO 5 - Guardando dataset limpio")
-	fmt.Println(sep)
-
-	outFile, err := os.Create(salida)
+	out, err := os.Create(outputFile)
 	if err != nil {
-		fmt.Printf("Error creando archivo de salida: %v\n", err)
-		os.Exit(1)
+		fmt.Println("Error creando archivo de salida:", err)
+		return
 	}
-	defer outFile.Close()
+	defer out.Close()
 
-	// BOM UTF-8 para compatibilidad con Excel
-	outFile.WriteString("\xef\xbb\xbf")
-
-	writer := csv.NewWriter(outFile)
+	out.WriteString("\xef\xbb\xbf") // BOM para Excel
+	writer := csv.NewWriter(out)
 	writer.Comma = ';'
-	writer.Write(allHeaders)
-	for _, row := range allRows {
+	
+	// Escribir cabecera (oficiales + ANO_MES)
+	header := append(columnasEsperadas, "ANO_MES")
+	writer.Write(header)
+	
+	for _, row := range finalDataset {
 		writer.Write(row)
 	}
 	writer.Flush()
 
-	info, _ := os.Stat(salida)
-	tamMB := float64(info.Size()) / (1024 * 1024)
-	fmt.Printf("\n  [OK] Archivo guardado en: %s\n", salida)
-	fmt.Printf("       Tamano: %.2f MB  |  Filas: %s\n\n", tamMB, formatearInt(len(allRows)))
+	elapsed := time.Since(start)
+	fmt.Println("============================================================")
+	fmt.Printf(" PROCESO COMPLETADO EN: %v\n", elapsed)
+	fmt.Printf(" Dataset guardado en: %s\n", outputFile)
+	fmt.Println("============================================================")
 }

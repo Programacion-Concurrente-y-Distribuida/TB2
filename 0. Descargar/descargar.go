@@ -75,7 +75,7 @@ func main() {
 				// Si falla o no existe, borramos el archivo en blanco creado
 				os.Remove(filePath)
 			} else {
-				fmt.Printf("  -> ¡Descargado!: %s\n", filename)
+				fmt.Printf("  -> Descargado: %s\n", filename)
 				mu.Lock()
 				downloadedCount++
 				mu.Unlock()
