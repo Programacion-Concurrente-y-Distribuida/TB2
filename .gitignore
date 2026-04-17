@@ -1,0 +1,6 @@
+*.csv
+data/*.csv
+.exe
+*.exe
+__pycache__/
+.DS_Store
