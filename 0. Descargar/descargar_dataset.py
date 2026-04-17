@@ -7,7 +7,9 @@ def main():
     # https://www.datosabiertos.gob.pe/sites/default/files/ReportePCBienesYYYYMM.csv
     base_url = "https://www.datosabiertos.gob.pe/sites/default/files/ReportePCBienes"
     
-    os.makedirs('data', exist_ok=True)
+    # Crear carpeta 'data' fuera de la carpeta actual (es decir, en PC1/data)
+    data_dir = os.path.join('..', 'data')
+    os.makedirs(data_dir, exist_ok=True)
     
     # Queremos descargar desde 2022-01 hasta 2026-03
     years = [2022, 2023, 2024, 2025, 2026]
@@ -26,7 +28,7 @@ def main():
             mes_texto = f"{month:02d}" # Formatea el mes a dos dígitos, ej: "08"
             filename = f"ReportePCBienes{year}{mes_texto}.csv"
             url = f"{base_url}{year}{mes_texto}.csv"
-            filepath = os.path.join('data', filename)
+            filepath = os.path.join(data_dir, filename)
             
             total_intentos += 1
             print(f"[*] Buscando archivo: {filename}")
