@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,7 +154,7 @@ func procesarArchivo(ruta string) ([][]string, error) {
 	for _, record := range records[1:] {
 		// 1. Filtrar solo las 19 columnas esperadas + 1 para ANO_MES
 		newRow := make([]string, len(columnasEsperadas)+1)
-		
+
 		// 2. Limpieza de campos
 		isValid := true
 		var fechaFormalizacion time.Time
@@ -218,11 +217,16 @@ func procesarArchivo(ruta string) ([][]string, error) {
 
 func main() {
 	start := time.Now()
-	
+
 	// Configuración de concurrencia: puedes ajustar este número para tus pruebas de estrés
 	// El valor recomendado es runtime.NumCPU()
-	numWorkers := runtime.NumCPU()
-	
+	// numWorkers := 1 basicamente reperesnta un modo secuencial, como si no hubiese concurrencia
+	// numWorkers := 2 o 4 ya empieza a haber concurrencia parcial, el tiempo bajara mucho.
+	// numWorkers := 12 o 24 ya empieza a haber concurrencia casi total, el tiempo bajara mucho mas.
+	// numWorkers := runtime.NumCPU() es el valor optimo para aprovechar todos los nucleos de tu procesador.
+	// representan los nucleaos de un procesador
+	numWorkers := 12
+
 	fmt.Println("============================================================")
 	fmt.Printf(" [PCD] Iniciando Limpieza Concurrente con %d Workers\n", numWorkers)
 	fmt.Println("============================================================")
@@ -232,7 +236,7 @@ func main() {
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		dataDir = "../data"
 	}
-	
+
 	outputFile := filepath.Join(filepath.Dir(dataDir), "dataset_limpio.csv")
 
 	files, _ := filepath.Glob(filepath.Join(dataDir, "*.csv"))
@@ -261,7 +265,7 @@ func main() {
 	var finalDataset [][]string
 	var mu sync.Mutex
 	var totalRecords int
-	
+
 	// Goroutine para esperar y cerrar resultados
 	go func() {
 		wg.Wait()
@@ -294,11 +298,11 @@ func main() {
 	out.WriteString("\xef\xbb\xbf") // BOM para Excel
 	writer := csv.NewWriter(out)
 	writer.Comma = ';'
-	
+
 	// Escribir cabecera (oficiales + ANO_MES)
 	header := append(columnasEsperadas, "ANO_MES")
 	writer.Write(header)
-	
+
 	for _, row := range finalDataset {
 		writer.Write(row)
 	}
