@@ -1,0 +1,36 @@
+never no_exceso {    /* !([] ((downloaded_count<=10))) */
+T0_init:
+	do
+	:: atomic { (! (((downloaded_count<=10)))) -> assert(!(! (((downloaded_count<=10))))) }
+	:: (1) -> goto T0_init
+	od;
+accept_all:
+	skip
+}
+never terminacion {    /* !(<> ((finished_count==10))) */
+accept_init:
+T0_init:
+	do
+	:: (! (((finished_count==10)))) -> goto T0_init
+	od;
+}
+never progreso_wg {    /* !([] ((! ((active_downloads>0))) || (<> ((active_downloads==0))))) */
+T0_init:
+	do
+	:: (! ((! ((active_downloads>0)))) && ! (((active_downloads==0)))) -> goto accept_S4
+	:: (1) -> goto T0_init
+	od;
+accept_S4:
+	do
+	:: (! (((active_downloads==0)))) -> goto accept_S4
+	od;
+}
+never sem_respetado {    /* !([] ((downloaded_count<=10))) */
+T0_init:
+	do
+	:: atomic { (! (((downloaded_count<=10)))) -> assert(!(! (((downloaded_count<=10))))) }
+	:: (1) -> goto T0_init
+	od;
+accept_all:
+	skip
+}
