@@ -4,3 +4,11 @@ data/*.csv
 *.exe
 __pycache__/
 .DS_Store
+
+# Go binaries
+benchmark/bin/
+benchmark/benchmark_runner
+
+# Benchmark results
+benchmark/results/exp1_raw.csv
+benchmark/results/exp2_workers.csv

@@ -1,0 +1,17 @@
+
+══════════════════════════════════════════════════════════════
+  RESUMEN EJECUTIVO
+══════════════════════════════════════════════════════════════
+
+  Experimento 1 — Media recortada (10% en cada extremo)
+  Métrica                      Secuencial   Concurrente
+  ────────────────────────────────────────────────────
+  Tiempo (s)                        3.099         1.124
+  Speedup                               —         2.76×
+  CPU promedio (%)                  138.1         659.5
+  RAM pico (MB)                     117.2         140.9
+
+  Experimento 2 — Workers óptimo
+    Workers: 10  |  Tiempo: 1.104s  |  Speedup: 2.81×
+
+══════════════════════════════════════════════════════════════
