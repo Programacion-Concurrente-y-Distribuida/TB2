@@ -1,29 +1,57 @@
-# Programacion Concurrente y Distribuida - PC1
+# Programación Concurrente y Distribuida - TB2
 
-Este repositorio contiene los scripts necesarios para unir, limpiar y expandir el dataset de Órdenes de Compra de PERÚ COMPRAS.
+Este repositorio contiene la implementación y el análisis de performance de algoritmos de procesamiento de datos masivos utilizando los paradigmas **Secuencial** y **Concurrente** en Go.
 
-## Estructura del Proyecto
+## 📁 Estructura del Proyecto
 
-- `1. Limpieza/`: Contiene el script `union_y_limpieza.go` para unificar los CSV de la carpeta `/data` y limpiarlos.
-- `2. Expandir/`: Contiene el script `expandir_dataset.go` para ampliar el dataset a 1,000,000 de registros con ruido sintético.
-- `data/`: Carpeta (ignorada por Git) donde se deben colocar los archivos CSV originales.
+- `0. Descargar/`: Scripts para la obtención del dataset original.
+- `1. Limpieza/`: Unificación y limpieza de archivos CSV.
+- `2. Expandir/`: Expansión del dataset original hasta alcanzar **1,000,000 de registros** con ruido sintético.
+- `Paradigmas/`: Implementación de los algoritmos de recomendación/procesamiento.
+  - `secuencial.go`: Versión monohilo.
+  - `concurrente.go`: Versión multihilo optimizada.
+  - `helpers.go`: Lógica compartida de procesamiento de texto.
+- `benchmark/`: Herramienta de alta precisión para el análisis de métricas.
+  - Genera reportes interactivos en `results/charts.html`.
+  - Mide Tiempo, CPU (%) y Memoria RAM (MB).
 
-## Requisitos
+## 🚀 Guía de Ejecución
 
-- Go (Golang) instalado.
+### 1. Preparación de Datos (1M de registros)
+Es necesario generar el dataset antes de ejecutar las pruebas de rendimiento:
 
-## Uso
+```bash
+# Unificar y limpiar
+cd "1. Limpieza"
+go run union_y_limpieza.go
 
-1. Colocar los archivos CSV originales en la carpeta `data/`.
-2. Ejecutar la unificación y limpieza:
-   ```bash
-   cd "1. Limpieza"
-   go run union_y_limpieza.go
-   ```
-3. Ejecutar la expansión a 1M de registros:
-   ```bash
-   cd "../2. Expandir"
-   go run expandir_dataset.go
-   ```
+# Expandir a 1 millón
+cd "../2. Expandir"
+go run expandir_dataset.go
+```
 
-El resultado final se encontrará en `data/dataset_1m.csv`.
+### 2. Ejecución del Benchmark
+El sistema de benchmark automatiza la compilación, ejecución y generación de gráficos.
+
+```bash
+cd benchmark
+
+# Ejecución estándar (100 runs por paradigma)
+./benchmark_runner
+
+# Si deseas saltar la compilación de los algoritmos:
+./benchmark_runner --skip-compile
+
+# Personalizar el número de ejecuciones:
+./benchmark_runner --runs 100 --workers-runs 10
+```
+
+## 📊 Análisis de Resultados
+Al finalizar el benchmark, se generan los siguientes archivos en `benchmark/results/`:
+- **`charts.html`**: Dashboard interactivo con Strip Plots, Boxplots y curvas de escalabilidad.
+- **`summary.txt`**: Resumen ejecutivo con el cálculo de Speedup y número óptimo de workers.
+- **`exp1_raw.csv`**: Datos crudos de las 200 ejecuciones comparativas.
+
+## 🛠 Requisitos
+- **Go 1.22+**
+- **macOS/Linux** (para la medición nativa de recursos de sistema)
