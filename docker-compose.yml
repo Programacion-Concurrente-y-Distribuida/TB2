@@ -1,0 +1,90 @@
+services:
+
+  # ── Infraestructura ──────────────────────────────────────────────────────────
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ping:1})"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Nodos ML (cluster distribuido) ──────────────────────────────────────────
+  # El coordinador (API) divide la matriz de diseño en particiones iguales y
+  # envía cada una a un nodo via TCP.  Cada nodo computa su XTX/XTy parcial.
+
+  ml-node-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.node
+    restart: unless-stopped
+    environment:
+      NODE_PORT: "9000"
+
+  ml-node-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.node
+    restart: unless-stopped
+    environment:
+      NODE_PORT: "9000"
+
+  ml-node-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.node
+    restart: unless-stopped
+    environment:
+      NODE_PORT: "9000"
+
+  # ── API (coordinador) ────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT:        ":8080"
+      MONGO_URL:   "mongodb://mongo:27017"
+      MONGO_DB:    "aqs"
+      REDIS_ADDR:  "redis:6379"
+      JWT_SECRET:  "${JWT_SECRET:-cambia_este_secreto_en_produccion}"
+      ADMIN_USER:  "${ADMIN_USER:-admin}"
+      ADMIN_PASS:  "${ADMIN_PASS:-admin123}"
+      NODE_ADDRS:  "ml-node-1:9000,ml-node-2:9000,ml-node-3:9000"
+      INPUT_PATH:  "/data/dataset.csv"
+    volumes:
+      # Monta el CSV de entrenamiento como solo lectura.
+      # Ajusta la ruta izquierda al CSV en tu máquina.
+      - ./data:/data:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ml-node-1:
+        condition: service_started
+      ml-node-2:
+        condition: service_started
+      ml-node-3:
+        condition: service_started
+
+volumes:
+  mongo-data:

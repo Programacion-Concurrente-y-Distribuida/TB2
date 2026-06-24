@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ping:1})"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT:        ":8080"
+      MONGO_URL:   "mongodb://mongo:27017"
+      MONGO_DB:    "aqs"
+      REDIS_ADDR:  "redis:6379"
+      JWT_SECRET:  "${JWT_SECRET:-cambia_este_secreto}"
+      ADMIN_USER:  "${ADMIN_USER:-admin}"
+      ADMIN_PASS:  "${ADMIN_PASS:-admin123}"
+      NODE_ADDRS:  "${NODE_ADDRS}"
+      INPUT_PATH:  "/data/dataset.csv"
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
