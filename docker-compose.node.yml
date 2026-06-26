@@ -1,0 +1,10 @@
+services:
+  ml-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.node
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
+    environment:
+      NODE_PORT: "9000"
