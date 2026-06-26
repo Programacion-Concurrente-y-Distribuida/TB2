@@ -34,9 +34,9 @@ func Run(cfg Config) error {
 
 	totalStart := profileStart(cfg, "total")
 
-	stageStart := profileStart(cfg, "load_csv_pipeline")
+	stageStart := profileStart(cfg, "loadCsvPipeline")
 	rows, loaded, skipped, err := loadCSV(cfg)
-	profileEnd(cfg, "load_csv_pipeline", stageStart)
+	profileEnd(cfg, "loadCsvPipeline", stageStart)
 	if err != nil {
 		return fmt.Errorf("error cargando CSV: %w", err)
 	}
@@ -44,31 +44,31 @@ func Run(cfg Config) error {
 		return fmt.Errorf("no se cargaron filas validas")
 	}
 
-	stageStart = profileStart(cfg, "split_train_test")
+	stageStart = profileStart(cfg, "splitTrainTest")
 	trainRows, testRows, err := splitRows(rows, cfg.TrainYearEnd)
-	profileEnd(cfg, "split_train_test", stageStart)
+	profileEnd(cfg, "splitTrainTest", stageStart)
 	if err != nil {
 		return fmt.Errorf("error separando train/test: %w", err)
 	}
 
-	stageStart = profileStart(cfg, "build_encoding_plan")
+	stageStart = profileStart(cfg, "buildEncodingPlan")
 	plan, err := buildCatEncodingPlan(trainRows, cfg.CatFeatures, cfg.OrdFeatures, cfg.MaxCatLevels)
-	profileEnd(cfg, "build_encoding_plan", stageStart)
+	profileEnd(cfg, "buildEncodingPlan", stageStart)
 	if err != nil {
 		return fmt.Errorf("error construyendo encoding categorico: %w", err)
 	}
 
 	plan.FeatureNames = append(append([]string(nil), cfg.NumericFeatures...), plan.FeatureNames...)
 
-	stageStart = profileStart(cfg, "build_train_matrix")
+	stageStart = profileStart(cfg, "buildTrainMatrix")
 	trainX := buildDesignMatrix(trainRows, plan)
 	trainY := buildTargetVector(trainRows)
-	profileEnd(cfg, "build_train_matrix", stageStart)
+	profileEnd(cfg, "buildTrainMatrix", stageStart)
 
-	stageStart = profileStart(cfg, "build_test_matrix")
+	stageStart = profileStart(cfg, "buildTestMatrix")
 	testX := buildDesignMatrix(testRows, plan)
 	testY := buildTargetVector(testRows)
-	profileEnd(cfg, "build_test_matrix", stageStart)
+	profileEnd(cfg, "buildTestMatrix", stageStart)
 
 	featureNames := append([]string(nil), plan.FeatureNames...)
 	stageStart = profileStart(cfg, "standardize")
@@ -110,14 +110,14 @@ func Run(cfg Config) error {
 		fmt.Println("PCA: desactivado")
 	}
 
-	stageStart = profileStart(cfg, "add_intercept")
+	stageStart = profileStart(cfg, "addIntercept")
 	trainXInt := addIntercept(trainXStd)
 	testXInt := addIntercept(testXStd)
-	profileEnd(cfg, "add_intercept", stageStart)
+	profileEnd(cfg, "addIntercept", stageStart)
 
-	stageStart = profileStart(cfg, "fit_linear_regression")
+	stageStart = profileStart(cfg, "fitLinearRegression")
 	beta, err := fitLinearRegression(trainXInt, trainY, cfg)
-	profileEnd(cfg, "fit_linear_regression", stageStart)
+	profileEnd(cfg, "fitLinearRegression", stageStart)
 	if err != nil {
 		return fmt.Errorf("error entrenando regresion lineal: %w", err)
 	}
@@ -127,10 +127,10 @@ func Run(cfg Config) error {
 	testPred := predict(testXInt, beta)
 	profileEnd(cfg, "predict", stageStart)
 
-	stageStart = profileStart(cfg, "compute_metrics")
+	stageStart = profileStart(cfg, "computeMetrics")
 	trainMetrics := computeMetrics(trainY, trainPred)
 	testMetrics := computeMetrics(testY, testPred)
-	profileEnd(cfg, "compute_metrics", stageStart)
+	profileEnd(cfg, "computeMetrics", stageStart)
 
 	fmt.Println("\n--- Metricas ---")
 	fmt.Printf("Train -> MAE: %.6f | RMSE: %.6f | R2: %.6f\n", trainMetrics.MAE, trainMetrics.RMSE, trainMetrics.R2)

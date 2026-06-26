@@ -57,7 +57,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	type nodeSt struct {
 		Addr      string `json:"addr"`
 		Status    string `json:"status"`
-		LatencyMs int64  `json:"latency_ms"`
+		LatencyMs int64  `json:"latencyMs"`
 	}
 	ns := make([]nodeSt, len(nodes))
 	for i, n := range nodes {
@@ -75,7 +75,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 type trainRequest struct {
 	Solver  string  `json:"solver"`   // ridge | svd | normal
 	Lambda  float64 `json:"lambda"`
-	MaxRows int     `json:"max_rows"` // 0 = no limit
+	MaxRows int     `json:"maxRows"` // 0 = no limit
 }
 
 func (s *Server) handleTrain(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +106,7 @@ func (s *Server) handleTrain(w http.ResponseWriter, r *http.Request) {
 
 	go s.runTrainingJob(jobID, req)
 
-	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": jobID})
 }
 
 func (s *Server) runTrainingJob(jobID string, req trainRequest) {
@@ -118,13 +118,13 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 			upd[k] = v
 		}
 		s.store.UpdateJob(ctx, jobID, upd) //nolint:errcheck
-		broadcast(map[string]any{"type": "job_update", "job_id": jobID, "status": status, "progress": progress})
+		broadcast(map[string]any{"type": "jobUpdate", "jobId": jobID, "status": status, "progress": progress})
 	}
 
 	setJob("running", 5, nil)
 
 	// 1. Prepare data
-	broadcast(map[string]any{"type": "phase", "job_id": jobID, "phase": "loading_data"})
+	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "loadingData"})
 	cfg := aqsml.DefaultConfig()
 	cfg.InputPath = s.cfg.InputPath
 	cfg.MaxRows = req.MaxRows
@@ -134,13 +134,13 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	data, err := aqsml.PrepareData(cfg)
 	if err != nil {
 		setJob("failed", 0, map[string]any{"error": err.Error()})
-		broadcast(map[string]any{"type": "error", "job_id": jobID, "message": err.Error()})
+		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": err.Error()})
 		return
 	}
 	setJob("running", 20, nil)
 
 	// 2. Distributed fit
-	broadcast(map[string]any{"type": "phase", "job_id": jobID, "phase": "distributing"})
+	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "distributing"})
 
 	var nodesCompleted int64
 	total := len(s.cfg.NodeAddrs)
@@ -149,9 +149,9 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 			n := int(atomic.AddInt64(&nodesCompleted, 1))
 			pct := 20 + (n*50)/total
 			setJob("running", pct, nil)
-			broadcast(map[string]any{"type": "node_done", "job_id": jobID, "node": addr, "progress": pct})
+			broadcast(map[string]any{"type": "nodeDone", "jobId": jobID, "node": addr, "progress": pct})
 		} else {
-			broadcast(map[string]any{"type": "node_start", "job_id": jobID, "node": addr})
+			broadcast(map[string]any{"type": "nodeStart", "jobId": jobID, "node": addr})
 		}
 	}
 
@@ -163,17 +163,17 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	)
 	if err != nil {
 		setJob("failed", 0, map[string]any{"error": err.Error()})
-		broadcast(map[string]any{"type": "error", "job_id": jobID, "message": err.Error()})
+		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": err.Error()})
 		return
 	}
 	setJob("running", 75, nil)
 
 	// 3. Solve for β
-	broadcast(map[string]any{"type": "phase", "job_id": jobID, "phase": "solving"})
+	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "solving"})
 	beta, err := aqsml.SolveNormalEquations(xtxTotal, xtyTotal, data.Cols, req.Lambda)
 	if err != nil {
 		setJob("failed", 0, map[string]any{"error": err.Error()})
-		broadcast(map[string]any{"type": "error", "job_id": jobID, "message": err.Error()})
+		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": err.Error()})
 		return
 	}
 
@@ -213,11 +213,11 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	}
 
 	now := time.Now()
-	setJob("done", 100, map[string]any{"model_id": modelID, "finished_at": now})
+	setJob("done", 100, map[string]any{"modelId": modelID, "finishedAt": now})
 	broadcast(map[string]any{
-		"type":     "training_complete",
-		"job_id":   jobID,
-		"model_id": modelID,
+		"type":    "trainingComplete",
+		"jobId":   jobID,
+		"modelId": modelID,
 		"mae":      mae,
 		"rmse":     rmse,
 		"r2":       r2,
@@ -227,7 +227,7 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 // ---- GET /api/train/{job_id} ----
 
 func (s *Server) handleTrainStatus(w http.ResponseWriter, r *http.Request) {
-	jobID := r.PathValue("job_id")
+	jobID := r.PathValue("jobId")
 	doc, err := s.store.GetJob(r.Context(), jobID)
 	if err == mongo.ErrNoDocuments {
 		writeError(w, http.StatusNotFound, "job no encontrado")
@@ -258,7 +258,7 @@ func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
 	type nodeInfo struct {
 		Addr      string `json:"addr"`
 		Status    string `json:"status"`
-		LatencyMs int64  `json:"latency_ms"`
+		LatencyMs int64  `json:"latencyMs"`
 	}
 	result := make([]nodeInfo, len(nodes))
 	for i, n := range nodes {
@@ -274,9 +274,9 @@ func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
 // ---- POST /api/predict ----
 
 type predictRequest struct {
-	ModelID   string             `json:"model_id"` // optional; uses latest if empty
-	NumValues map[string]float64 `json:"num_values"`
-	CatValues map[string]string  `json:"cat_values"`
+	ModelID   string             `json:"modelId"` // optional; uses latest if empty
+	NumValues map[string]float64 `json:"numValues"`
+	CatValues map[string]string  `json:"catValues"`
 }
 
 func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
@@ -311,7 +311,7 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"prediction": cached,
 			"cached":     true,
-			"model_id":   model.ID.Hex(),
+			"modelId":   model.ID.Hex(),
 		})
 		return
 	}
@@ -344,7 +344,7 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"prediction": pred,
 		"cached":     false,
-		"model_id":   model.ID.Hex(),
+		"modelId":   model.ID.Hex(),
 	})
 }
 

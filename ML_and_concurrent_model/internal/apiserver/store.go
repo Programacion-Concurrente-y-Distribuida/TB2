@@ -17,37 +17,37 @@ import (
 // JobDoc tracks the lifecycle of a distributed training job.
 type JobDoc struct {
 	ID          bson.ObjectID  `bson:"_id,omitempty"    json:"id"`
-	JobID       string         `bson:"job_id"           json:"job_id"`
+	JobID       string         `bson:"job_id"           json:"jobId"`
 	Status      string         `bson:"status"           json:"status"` // pending|running|done|failed
 	Progress    int            `bson:"progress"         json:"progress"`
-	StartedAt   time.Time      `bson:"started_at"       json:"started_at"`
-	FinishedAt  *time.Time     `bson:"finished_at"      json:"finished_at,omitempty"`
+	StartedAt   time.Time      `bson:"started_at"       json:"startedAt"`
+	FinishedAt  *time.Time     `bson:"finished_at"      json:"finishedAt,omitempty"`
 	ErrorMsg    string         `bson:"error,omitempty"  json:"error,omitempty"`
-	ModelID     string         `bson:"model_id"         json:"model_id,omitempty"`
+	ModelID     string         `bson:"model_id"         json:"modelId,omitempty"`
 }
 
 // ModelDoc stores a trained model: coefficients, metrics, and all the metadata
 // needed to reproduce predictions without reloading the dataset.
 type ModelDoc struct {
 	ID              bson.ObjectID `bson:"_id,omitempty"      json:"id"`
-	JobID           string        `bson:"job_id"             json:"job_id"`
+	JobID           string        `bson:"job_id"             json:"jobId"`
 	Beta            []float64     `bson:"beta"               json:"beta"`
 	MAE             float64       `bson:"mae"                json:"mae"`
 	RMSE            float64       `bson:"rmse"               json:"rmse"`
 	R2              float64       `bson:"r2"                 json:"r2"`
-	TrainedAt       time.Time     `bson:"trained_at"         json:"trained_at"`
+	TrainedAt       time.Time     `bson:"trained_at"         json:"trainedAt"`
 	Solver          string        `bson:"solver"             json:"solver"`
 	Lambda          float64       `bson:"lambda"             json:"lambda"`
-	NodesUsed       []string      `bson:"nodes_used"         json:"nodes_used"`
-	FeatureNames    []string      `bson:"feature_names"      json:"feature_names"`
-	NumFeatureNames []string      `bson:"num_feature_names"  json:"num_feature_names"`
-	CatFeatureNames []string      `bson:"cat_feature_names"  json:"cat_feature_names"`
+	NodesUsed       []string      `bson:"nodes_used"         json:"nodesUsed"`
+	FeatureNames    []string      `bson:"feature_names"      json:"featureNames"`
+	NumFeatureNames []string      `bson:"num_feature_names"  json:"numFeatureNames"`
+	CatFeatureNames []string      `bson:"cat_feature_names"  json:"catFeatureNames"`
 	Means           []float64     `bson:"means"              json:"means"`
 	Stds            []float64     `bson:"stds"               json:"stds"`
 	PlanJSON        []byte        `bson:"plan_json"          json:"-"`
 	Cols            int           `bson:"cols"               json:"cols"`
-	TrainRows       int           `bson:"train_rows"         json:"train_rows"`
-	TestRows        int           `bson:"test_rows"          json:"test_rows"`
+	TrainRows       int           `bson:"train_rows"         json:"trainRows"`
+	TestRows        int           `bson:"test_rows"          json:"testRows"`
 }
 
 // ---- Store ----

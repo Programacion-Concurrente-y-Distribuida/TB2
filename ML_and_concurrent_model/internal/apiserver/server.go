@@ -49,7 +49,7 @@ func (s *Server) Start() error {
 		mux.Handle(method+" "+pattern, s.jwtMiddleware(h))
 	}
 	protected("POST", "/api/train", s.handleTrain)
-	protected("GET", "/api/train/{job_id}", s.handleTrainStatus)
+	protected("GET", "/api/train/{jobId}", s.handleTrainStatus)
 	protected("GET", "/api/models", s.handleListModels)
 	protected("POST", "/api/predict", s.handlePredict)
 	protected("GET", "/api/cluster/nodes", s.handleClusterNodes)
