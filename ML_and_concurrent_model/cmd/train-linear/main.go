@@ -30,6 +30,7 @@ func main() {
 	solver := flag.String("solver", cfg.Solver, "Solver de regresion: ridge, normal o svd")
 	fitWorkers := flag.Int("fit-workers", cfg.FitWorkers, "Workers para acumulacion concurrente de XTX/XTy")
 	ridgeLambda := flag.Float64("ridge-lambda", cfg.RidgeLambda, "Lambda de regularizacion Ridge")
+	saveModel := flag.String("save-model", "", "Ruta para guardar el modelo entrenado (JSON); vacio = no guardar")
 	flag.Parse()
 
 	cfg.InputPath = *inputPath
@@ -51,6 +52,7 @@ func main() {
 	cfg.Solver = *solver
 	cfg.FitWorkers = *fitWorkers
 	cfg.RidgeLambda = *ridgeLambda
+	cfg.SaveModelPath = *saveModel
 
 	if err := aqsml.Run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

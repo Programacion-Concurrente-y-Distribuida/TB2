@@ -56,6 +56,7 @@ type Config struct {
 	Solver          string
 	FitWorkers      int
 	RidgeLambda     float64
+	SaveModelPath   string
 }
 
 type rowData struct {

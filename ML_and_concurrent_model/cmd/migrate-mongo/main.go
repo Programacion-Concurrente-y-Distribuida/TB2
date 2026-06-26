@@ -172,7 +172,7 @@ func run(cfg config) error {
 	defer f.Close()
 
 	reader := csv.NewReader(f)
-	reader.ReuseRecord = true // reutiliza el buffer interno: menos allocs por fila
+	reader.ReuseRecord = true  // reutiliza el buffer interno: menos allocs por fila
 	reader.FieldsPerRecord = 0 // fija el numero de campos segun el header
 
 	header, err := reader.Read()

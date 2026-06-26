@@ -3,6 +3,7 @@ package aqsml
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 func Run(cfg Config) error {
@@ -71,7 +72,7 @@ func Run(cfg Config) error {
 
 	featureNames := append([]string(nil), plan.FeatureNames...)
 	stageStart = profileStart(cfg, "standardize")
-	trainXStd, testXStd, _, stds := standardize(trainX, testX)
+	trainXStd, testXStd, means, stds := standardize(trainX, testX)
 	profileEnd(cfg, "standardize", stageStart)
 
 	fmt.Println("============================================================")
@@ -142,6 +143,41 @@ func Run(cfg Config) error {
 		printTopPcaCoefficients(beta, 20)
 	}
 	fmt.Println("============================================================")
+
+	if cfg.SaveModelPath != "" {
+		if cfg.UsePCA {
+			fmt.Printf("Aviso: no se guarda el modelo porque -use-pca esta activo (no soportado por predict-linear)\n")
+		} else {
+			br, _ := beta.Dims()
+			betaSlice := make([]float64, br)
+			for i := 0; i < br; i++ {
+				betaSlice[i] = beta.At(i, 0)
+			}
+			sm := &SavedModel{
+				TargetCol:       cfg.TargetCol,
+				Solver:          cfg.Solver,
+				RidgeLambda:     cfg.RidgeLambda,
+				NumericFeatures: cfg.NumericFeatures,
+				CatFeatures:     cfg.CatFeatures,
+				OrdFeatures:     cfg.OrdFeatures,
+				MaxCatLevels:    cfg.MaxCatLevels,
+				Plan:            plan,
+				Means:           means,
+				Stds:            stds,
+				FeatureNames:    featureNames,
+				Beta:            betaSlice,
+				TrainRows:       len(trainRows),
+				TrainMetrics:    trainMetrics,
+				TestMetrics:     testMetrics,
+				SavedAt:         time.Now().Format(time.RFC3339),
+			}
+			if err := saveModel(cfg.SaveModelPath, sm); err != nil {
+				return fmt.Errorf("guardando modelo: %w", err)
+			}
+			fmt.Printf("Modelo guardado en: %s\n", cfg.SaveModelPath)
+		}
+	}
+
 	profileEnd(cfg, "total", totalStart)
 	return nil
 }

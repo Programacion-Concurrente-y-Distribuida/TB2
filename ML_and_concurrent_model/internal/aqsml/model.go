@@ -48,6 +48,28 @@ func standardize(trainX, testX *mat.Dense) (*mat.Dense, *mat.Dense, []float64, [
 	return trainOut, testOut, means, stds
 }
 
+// standardizeApply aplica una estandarizacion z-score ya calculada (medias y
+// desviaciones de entrenamiento) a una matriz nueva, sin recalcular nada. Se
+// usa en inferencia para reproducir exactamente la escala vista al entrenar.
+func standardizeApply(x *mat.Dense, means, stds []float64) *mat.Dense {
+	r, c := x.Dims()
+	out := mat.NewDense(r, c, nil)
+	for j := 0; j < c; j++ {
+		mean := 0.0
+		std := 1.0
+		if j < len(means) {
+			mean = means[j]
+		}
+		if j < len(stds) && stds[j] != 0 {
+			std = stds[j]
+		}
+		for i := 0; i < r; i++ {
+			out.Set(i, j, (x.At(i, j)-mean)/std)
+		}
+	}
+	return out
+}
+
 func applyPCA(trainX, testX *mat.Dense, varianceGoal float64) (*mat.Dense, *mat.Dense, int, float64, error) {
 	n, p := trainX.Dims()
 	if n <= 1 {
