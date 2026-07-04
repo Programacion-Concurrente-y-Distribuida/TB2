@@ -81,11 +81,44 @@
   border-color: #e05a5a;
 }
 
+.app__footer-sources {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: #aaa;
+  flex-wrap: wrap;
+}
+
+.app__footer-sources a {
+  color: #999;
+  text-decoration: none;
+  border-bottom: 1px dotted #ccc;
+  transition: color 0.15s;
+}
+
+.app__footer-sources a:hover {
+  color: #555;
+}
+
+.footer-sources__label {
+  color: #bbb;
+}
+
+.footer-sources__sep {
+  color: #ccc;
+}
+
 .app__footer {
-  padding: 0.35rem 1rem;
-  font-size: 0.68rem;
-  opacity: 0.55;
-  border-top: 1px solid #ddd;
+  padding: 0.4rem 1rem;
+  font-size: 0.72rem;
+  color: #aaa;
+  border-top: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 /* ── Sidebar controls ────────────────────────────────────────────────────── */

@@ -198,8 +198,15 @@ export default function App() {
       )}
 
       <footer className="app__footer">
-        Límites distritales: IGN vía OCHA / HDX (CC BY-IGO). Modelo predictivo entrenado con datos EPA AQS —
-        sistema distribuido de ML en Go con goroutines y TCP entre nodos.
+        <span>Sistema distribuido de ML — Go + goroutines + TCP</span>
+        <div className="app__footer-sources">
+          <span className="footer-sources__label">Fuentes de datos:</span>
+          <a href="https://www.datosabiertos.gob.pe/dataset/monitoreo-de-los-contaminantes-del-aire-en-lima-metropolitana-servicio-nacional-de" target="_blank" rel="noopener noreferrer">SENAMHI REMCA</a>
+          <span className="footer-sources__sep">·</span>
+          <a href="https://www.epa.gov/aqs" target="_blank" rel="noopener noreferrer">EPA AQS</a>
+          <span className="footer-sources__sep">·</span>
+          <a href="https://data.humdata.org/dataset/peru-administrative-level-0-1-2-3-boundaries" target="_blank" rel="noopener noreferrer">IGN / OCHA HDX</a>
+        </div>
       </footer>
 
       {showLogin && (
