@@ -1,0 +1,144 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app__header {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app__header p {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.app__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.app__sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 1rem;
+  border-right: 1px solid #ddd;
+  overflow-y: auto;
+}
+
+.app__map {
+  position: relative;
+  flex: 1;
+}
+
+.map-container {
+  height: 100%;
+  width: 100%;
+}
+
+.app__banner {
+  position: absolute;
+  z-index: 1000;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff8d6;
+  border: 1px solid #e0c14a;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  max-width: 90%;
+}
+
+.app__banner--error {
+  background: #ffe0e0;
+  border-color: #e05a5a;
+}
+
+.pollutant-selector {
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pollutant-selector select {
+  padding: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.legend {
+  margin-bottom: 1.25rem;
+}
+
+.legend h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.district-panel {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.district-panel--empty {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.district-panel h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.district-panel__value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.district-panel__level {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.app__footer {
+  padding: 0.4rem 1rem;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  border-top: 1px solid #ddd;
+}

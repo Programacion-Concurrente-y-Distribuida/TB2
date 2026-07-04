@@ -8,15 +8,15 @@ import (
 
 // Config holds all runtime parameters for the API server.
 type Config struct {
-	Port       string
-	MongoURL   string
-	MongoDB    string
-	RedisAddr  string
-	JWTSecret  string
-	AdminUser  string
-	AdminPass  string
-	NodeAddrs  []string // e.g. ["ml-node-1:9000", "ml-node-2:9000"]
-	InputPath  string   // CSV path accessible inside the container
+	Port      string
+	MongoURL  string
+	MongoDB   string
+	RedisAddr string
+	JWTSecret string
+	AdminUser string
+	AdminPass string
+	NodeAddrs []string // e.g. ["ml-node-1:9000", "ml-node-2:9000"]
+	InputPath string   // CSV path accessible inside the container
 }
 
 // Server is the main API server.
@@ -43,6 +43,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /ws", s.hub.serveWS)
+	mux.HandleFunc("GET /api/districts", s.handleListDistricts)
+	mux.HandleFunc("GET /api/districts/predict", s.handleDistrictPredictions)
 
 	// Protected — wrap each group with JWT middleware
 	protected := func(method, pattern string, h http.HandlerFunc) {
