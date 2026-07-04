@@ -43,52 +43,65 @@ type districtProfile struct {
 }
 
 // limaDistrictProfiles maps district ID to its pollution profile.
-// High-pollution districts: heavy industry, major highways, dense traffic.
-// Low-pollution districts: residential, green areas, coastal breeze.
+// Anchored to real SENAMHI REMCA station data (367 586 hourly PM2.5 records,
+// stations: SJL, STA, CRB, VMT, SMP, SBJ, CDM).  Remaining districts
+// interpolated from Lima's four geographic zones and land-use characteristics.
+// Source: datosabiertos.gob.pe — SENAMHI monitoreo calidad del aire Lima.
 var limaDistrictProfiles = map[string]districtProfile{
-	"150101": {1.40, 3.5},  // Lima Cercado    — centro histórico, alto tráfico
-	"150102": {0.55, 0.4},  // Ancón           — costera, baja actividad industrial
-	"150103": {1.80, 5.2},  // Ate             — zona industrial Huaycan/Vitarte
-	"150104": {0.60, 0.5},  // Barranco        — residencial, frente al mar
-	"150105": {1.20, 2.0},  // Breña           — comercial denso
-	"150106": {1.70, 4.8},  // Carabayllo      — periurbano norte, ladrilleras
-	"150107": {0.65, 0.6},  // Chaclacayo      — residencial, menor densidad
-	"150108": {0.90, 1.1},  // Chorrillos      — mixto residencial/costera
-	"150109": {0.45, 0.3},  // Cieneguilla     — rural, cuenca del Lurín
-	"150110": {1.60, 4.2},  // Comas           — denso, norte industrial
-	"150111": {1.75, 4.9},  // El Agustino     — industrial, cercano a fábricas
-	"150112": {1.55, 3.9},  // Independencia   — eje norte, comercio y fábricas
-	"150113": {0.75, 0.7},  // Jesús María     — residencial
-	"150114": {0.55, 0.4},  // La Molina       — residencial arbolado, mayor altitud
-	"150115": {1.35, 3.0},  // La Victoria     — mercados, tráfico pesado
-	"150116": {0.70, 0.6},  // Lince           — residencial-comercial
-	"150117": {1.50, 3.6},  // Los Olivos      — zona industrial norte
-	"150118": {1.40, 3.2},  // Lurigancho      — periurbano, industria ligera
-	"150119": {0.65, 0.5},  // Lurín           — periférico sur, algo industrial
-	"150120": {0.65, 0.5},  // Magdalena       — residencial costera
-	"150121": {0.70, 0.6},  // Pueblo Libre    — residencial
-	"150122": {0.50, 0.3},  // Miraflores      — residencial premium, parques
-	"150123": {0.75, 0.7},  // Pachacámac      — periurbano, menor densidad
-	"150124": {0.40, 0.2},  // Pucusana        — costera, muy poca industria
-	"150125": {1.65, 4.5},  // Puente Piedra   — norte, zona industrial pesada
-	"150126": {0.40, 0.2},  // Punta Hermosa   — balneario, baja actividad
-	"150127": {0.40, 0.2},  // Punta Negra     — balneario, baja actividad
-	"150128": {1.30, 2.8},  // Rímac           — histórico, tráfico elevado
-	"150129": {0.40, 0.2},  // San Bartolo     — balneario
-	"150130": {0.60, 0.4},  // San Borja       — residencial arbolado
-	"150131": {0.50, 0.3},  // San Isidro      — financiero, muchos parques
-	"150132": {1.90, 5.8},  // SJL             — más poblado, alta contaminación
-	"150133": {1.55, 3.8},  // SJM             — periurbano sur, industria
-	"150134": {1.10, 1.8},  // San Luis        — industrial liviano
-	"150135": {1.60, 4.0},  // SMP             — norte, denso tráfico
-	"150136": {0.75, 0.7},  // San Miguel      — residencial-costera
-	"150137": {1.45, 3.4},  // Santa Anita     — zona industrial este
-	"150138": {0.40, 0.2},  // Sta María Mar   — balneario
-	"150139": {0.45, 0.3},  // Santa Rosa      — costera norte
-	"150140": {0.80, 0.8},  // Santiago Surco  — residencial, parques
-	"150141": {0.85, 0.9},  // Surquillo       — comercial-residencial
-	"150142": {1.70, 4.7},  // Villa El Salv.  — industrial sur, ladrilleras
-	"150143": {1.65, 4.3},  // Villa Mª Triunfo— periurbano sur, informal
+	// ── Measured by SENAMHI REMCA (real PM2.5 averages) ─────────────────────
+	"150132": {1.37, 4.08}, // SJL             — 31.35 µg/m³ (SENAMHI)
+	"150137": {1.30, 3.91}, // Santa Anita     — 30.03 µg/m³ (SENAMHI)
+	"150106": {1.19, 3.62}, // Carabayllo      — 27.85 µg/m³ (SENAMHI)
+	"150143": {1.11, 3.42}, // VMT             — 26.26 µg/m³ (SENAMHI)
+	"150135": {0.73, 2.43}, // SMP             — 18.68 µg/m³ (SENAMHI)
+	"150130": {0.73, 2.43}, // San Borja       — 18.67 µg/m³ (SENAMHI)
+	"150113": {0.65, 2.20}, // Jesús María     — 16.91 µg/m³ (SENAMHI/CDM)
+
+	// ── Lima Norte (interpolado — zona industrial/periurbana) ────────────────
+	"150125": {1.15, 3.55}, // Puente Piedra   — conurbado con Carabayllo, ladrilleras
+	"150112": {1.10, 3.30}, // Independencia   — eje norte, industria ligera
+	"150110": {1.08, 3.20}, // Comas           — denso, cercano a Carabayllo
+	"150117": {1.00, 2.90}, // Los Olivos      — comercial-industrial norte
+	"150102": {0.55, 1.20}, // Ancón           — costera norte, baja actividad
+	"150139": {0.50, 1.00}, // Santa Rosa      — balneario norte
+
+	// ── Lima Este (interpolado — industrial / periurbano) ────────────────────
+	"150103": {1.28, 3.80}, // Ate             — zona industrial Huaycan/Vitarte (~STA)
+	"150111": {1.20, 3.60}, // El Agustino     — industrial, fábricas (~CRB)
+	"150118": {1.05, 3.00}, // Lurigancho      — periurbano, industria ligera
+	"150107": {0.68, 1.80}, // Chaclacayo      — residencial, menor densidad
+
+	// ── Lima Centro (interpolado — urbano denso / comercial) ─────────────────
+	"150101": {0.90, 2.60}, // Lima Cercado    — centro histórico, alto tráfico
+	"150105": {0.85, 2.45}, // Breña           — comercial denso
+	"150115": {0.88, 2.50}, // La Victoria     — mercados, tráfico pesado
+	"150128": {0.83, 2.35}, // Rímac           — histórico, tráfico elevado
+	"150134": {0.78, 2.10}, // San Luis        — industria liviana
+	"150116": {0.68, 1.80}, // Lince           — residencial-comercial
+	"150141": {0.70, 1.90}, // Surquillo       — comercial-residencial
+	"150121": {0.65, 1.70}, // Pueblo Libre    — residencial
+	"150131": {0.55, 1.30}, // San Isidro      — financiero, parques (~SBJ)
+	"150136": {0.65, 1.70}, // San Miguel      — residencial-costera
+
+	// ── Lima Sur (interpolado — mixto / periurbano) ──────────────────────────
+	"150142": {1.18, 3.58}, // Villa El Salv.  — industrial sur, ladrilleras (~VMT)
+	"150133": {1.05, 3.05}, // SJM             — periurbano sur, denso
+	"150108": {0.72, 1.95}, // Chorrillos      — mixto residencial/costera
+	"150140": {0.68, 1.80}, // Santiago Surco  — residencial arbolado
+	"150114": {0.58, 1.40}, // La Molina       — residencial, mayor altitud
+	"150123": {0.62, 1.55}, // Pachacámac      — periurbano, menor densidad
+	"150109": {0.45, 0.80}, // Cieneguilla     — rural, cuenca del Lurín
+	"150119": {0.55, 1.20}, // Lurín           — periférico sur
+	"150120": {0.62, 1.55}, // Magdalena       — residencial costera
+
+	// ── Balnearios / costera sur (más limpios) ───────────────────────────────
+	"150104": {0.52, 1.10}, // Barranco        — residencial, frente al mar
+	"150122": {0.50, 1.05}, // Miraflores      — residencial premium, parques
+	"150126": {0.38, 0.60}, // Punta Hermosa   — balneario
+	"150127": {0.37, 0.55}, // Punta Negra     — balneario
+	"150129": {0.37, 0.55}, // San Bartolo     — balneario
+	"150138": {0.36, 0.50}, // Sta María Mar   — balneario
+	"150124": {0.38, 0.60}, // Pucusana        — costera, muy poca industria
 }
 
 // applyDistrictProfile adjusts the base numeric feature map using district-specific
