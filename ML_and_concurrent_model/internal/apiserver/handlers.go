@@ -451,14 +451,15 @@ func (s *Server) handlePredictPublic(w http.ResponseWriter, r *http.Request) {
 		"Units of Measure":   profile.UnitsOfMeasure,
 		"Pollutant Standard": profile.PollutantStandard,
 	}
-	numValues := map[string]float64{
+	baseNum := map[string]float64{
 		"Latitude":  district.Lat,
 		"Longitude": district.Lon,
 		"Year":      float64(time.Now().Year()),
 	}
 	for k, v := range profile.Numeric {
-		numValues[k] = v
+		baseNum[k] = v
 	}
+	numValues := applyDistrictProfile(baseNum, district.ID)
 
 	x, err := aqsml.EncodeInputJSON(model.NumFeatureNames, model.PlanJSON, numValues, catValues, model.Means, model.Stds)
 	if err != nil {
