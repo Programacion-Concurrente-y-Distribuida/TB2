@@ -53,7 +53,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // ---- GET /api/health ----
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	nodes := coordinator.CheckNodes(s.cfg.NodeAddrs)
+	nodes := coordinator.CheckNodes(s.effectiveNodes(r.Context()))
 	type nodeSt struct {
 		Addr      string `json:"addr"`
 		Status    string `json:"status"`
@@ -142,8 +142,9 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	// 2. Distributed fit
 	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "distributing"})
 
+	nodeAddrsActive := s.effectiveNodes(ctx)
 	var nodesCompleted int64
-	total := len(s.cfg.NodeAddrs)
+	total := len(nodeAddrsActive)
 	progress := func(addr string, done bool) {
 		if done {
 			n := int(atomic.AddInt64(&nodesCompleted, 1))
@@ -156,7 +157,7 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	}
 
 	xtxTotal, xtyTotal, nodeResults, err := coordinator.DistributedFit(
-		s.cfg.NodeAddrs,
+		nodeAddrsActive,
 		data.TrainX, data.TrainY,
 		data.TrainRows, data.Cols,
 		progress,
@@ -254,11 +255,17 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 // ---- GET /api/cluster/nodes ----
 
 func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
-	nodes := coordinator.CheckNodes(s.cfg.NodeAddrs)
+	addrs := s.effectiveNodes(r.Context())
+	defaultAddrs := make(map[string]bool)
+	for _, a := range s.cfg.NodeAddrs {
+		defaultAddrs[a] = true
+	}
+	nodes := coordinator.CheckNodes(addrs)
 	type nodeInfo struct {
 		Addr      string `json:"addr"`
 		Status    string `json:"status"`
 		LatencyMs int64  `json:"latencyMs"`
+		IsDefault bool   `json:"isDefault"`
 	}
 	result := make([]nodeInfo, len(nodes))
 	for i, n := range nodes {
@@ -266,9 +273,45 @@ func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
 		if n.Err != nil {
 			st = "unreachable"
 		}
-		result[i] = nodeInfo{Addr: n.Addr, Status: st, LatencyMs: n.Duration.Milliseconds()}
+		result[i] = nodeInfo{Addr: n.Addr, Status: st, LatencyMs: n.Duration.Milliseconds(), IsDefault: defaultAddrs[n.Addr]}
 	}
-	writeJSON(w, http.StatusOK, result)
+	_, usingDynamic := s.store.GetDynamicNodes(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes":        result,
+		"usingDynamic": usingDynamic,
+		"defaults":     s.cfg.NodeAddrs,
+	})
+}
+
+// ---- POST /api/cluster/nodes ----
+
+func (s *Server) handleSetNodes(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Nodes []string `json:"nodes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+	if len(body.Nodes) == 0 {
+		writeError(w, http.StatusBadRequest, "se requiere al menos un nodo")
+		return
+	}
+	if err := s.store.SetDynamicNodes(r.Context(), body.Nodes); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"nodes": body.Nodes, "usingDynamic": true})
+}
+
+// ---- DELETE /api/cluster/nodes ----
+
+func (s *Server) handleResetNodes(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.ResetDynamicNodes(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"nodes": s.cfg.NodeAddrs, "usingDynamic": false})
 }
 
 // ---- POST /api/predict ----

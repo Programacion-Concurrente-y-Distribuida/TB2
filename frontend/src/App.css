@@ -575,6 +575,92 @@
   background: #f0f4ff;
 }
 
+/* ── Node badge extras ───────────────────────────────────────────────────── */
+
+.node-badge__tag {
+  font-size: 0.65rem;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.node-badge__remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.node-badge__remove:hover {
+  color: #dc2626;
+}
+
+/* ── Cluster mode badge ──────────────────────────────────────────────────── */
+
+.cluster-mode {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 2px 8px;
+  margin-left: 0.6rem;
+  vertical-align: middle;
+}
+
+.cluster-mode--default {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.cluster-mode--dynamic {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+/* ── Add node row ────────────────────────────────────────────────────────── */
+
+.node-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.node-add__input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.node-add__error {
+  color: #dc2626;
+  font-size: 0.82rem;
+  margin: 0.25rem 0 0;
+}
+
+.node-add__hint {
+  font-size: 0.78rem;
+  color: #888;
+  margin: 0.4rem 0 0;
+  line-height: 1.5;
+}
+
+.node-add__hint code {
+  background: #f3f4f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 
 .app__tabs {

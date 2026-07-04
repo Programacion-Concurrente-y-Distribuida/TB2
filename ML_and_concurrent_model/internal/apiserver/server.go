@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -24,6 +25,15 @@ type Server struct {
 	cfg   Config
 	hub   *Hub
 	store *Store
+}
+
+// effectiveNodes returns the dynamic node list from Redis if set,
+// otherwise falls back to the static list in cfg.NodeAddrs.
+func (s *Server) effectiveNodes(ctx context.Context) []string {
+	if nodes, ok := s.store.GetDynamicNodes(ctx); ok && len(nodes) > 0 {
+		return nodes
+	}
+	return s.cfg.NodeAddrs
 }
 
 // New creates and initialises a Server, connecting to MongoDB and Redis.
@@ -57,6 +67,8 @@ func (s *Server) Start() error {
 	protected("GET", "/api/models", s.handleListModels)
 	protected("POST", "/api/predict", s.handlePredict)
 	protected("GET", "/api/cluster/nodes", s.handleClusterNodes)
+	protected("POST", "/api/cluster/nodes", s.handleSetNodes)
+	protected("DELETE", "/api/cluster/nodes", s.handleResetNodes)
 
 	handler := corsMiddleware(mux)
 	fmt.Printf("API escuchando en %s\n", s.cfg.Port)

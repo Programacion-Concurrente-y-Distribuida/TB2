@@ -178,6 +178,44 @@ func (s *Store) CachePrediction(ctx context.Context, key string, value float64) 
 	s.rdb.Set(ctx, "pred:"+key, data, predCacheTTL) //nolint:errcheck
 }
 
+// ---- Dynamic node list (stored in Redis) ----
+
+const nodeListKey = "cluster:nodes"
+
+// GetDynamicNodes returns the node list stored in Redis.
+// ok=false means no dynamic list is set (caller should use defaults).
+func (s *Store) GetDynamicNodes(ctx context.Context) ([]string, bool) {
+	if s.rdb == nil {
+		return nil, false
+	}
+	data, err := s.rdb.Get(ctx, nodeListKey).Bytes()
+	if err != nil {
+		return nil, false
+	}
+	var nodes []string
+	if json.Unmarshal(data, &nodes) != nil {
+		return nil, false
+	}
+	return nodes, true
+}
+
+// SetDynamicNodes persists a node list to Redis (no TTL — survives restarts).
+func (s *Store) SetDynamicNodes(ctx context.Context, nodes []string) error {
+	if s.rdb == nil {
+		return fmt.Errorf("redis no disponible")
+	}
+	data, _ := json.Marshal(nodes)
+	return s.rdb.Set(ctx, nodeListKey, data, 0).Err()
+}
+
+// ResetDynamicNodes deletes the Redis key so the default node list is used.
+func (s *Store) ResetDynamicNodes(ctx context.Context) error {
+	if s.rdb == nil {
+		return fmt.Errorf("redis no disponible")
+	}
+	return s.rdb.Del(ctx, nodeListKey).Err()
+}
+
 // GetCachedPrediction retrieves a cached prediction. ok=false if not found.
 func (s *Store) GetCachedPrediction(ctx context.Context, key string) (float64, bool) {
 	if s.rdb == nil {

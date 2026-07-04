@@ -75,6 +75,21 @@ export function getClusterNodes(token) {
   return request('/api/cluster/nodes', { headers: authHeaders(token) })
 }
 
+export function setClusterNodes(nodes, token) {
+  return request('/api/cluster/nodes', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ nodes }),
+  })
+}
+
+export function resetClusterNodes(token) {
+  return request('/api/cluster/nodes', {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+}
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 /**
