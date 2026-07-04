@@ -1,0 +1,260 @@
+[
+  {
+    "id": "150102",
+    "name": "Ancón",
+    "lat": -11.7208,
+    "lon": -77.1373
+  },
+  {
+    "id": "150103",
+    "name": "Ate",
+    "lat": -12.0298,
+    "lon": -76.9003
+  },
+  {
+    "id": "150104",
+    "name": "Barranco",
+    "lat": -12.1461,
+    "lon": -77.0247
+  },
+  {
+    "id": "150105",
+    "name": "Breña",
+    "lat": -12.058,
+    "lon": -77.0515
+  },
+  {
+    "id": "150106",
+    "name": "Carabayllo",
+    "lat": -11.7873,
+    "lon": -76.9542
+  },
+  {
+    "id": "150107",
+    "name": "Chaclacayo",
+    "lat": -11.9831,
+    "lon": -76.7782
+  },
+  {
+    "id": "150108",
+    "name": "Chorrillos",
+    "lat": -12.1962,
+    "lon": -77.0207
+  },
+  {
+    "id": "150109",
+    "name": "Cieneguilla",
+    "lat": -12.0962,
+    "lon": -76.7478
+  },
+  {
+    "id": "150110",
+    "name": "Comas",
+    "lat": -11.9215,
+    "lon": -77.0384
+  },
+  {
+    "id": "150111",
+    "name": "El Agustino",
+    "lat": -12.0394,
+    "lon": -76.9821
+  },
+  {
+    "id": "150112",
+    "name": "Independencia",
+    "lat": -11.993,
+    "lon": -77.0459
+  },
+  {
+    "id": "150113",
+    "name": "Jesús María",
+    "lat": -12.0788,
+    "lon": -77.0492
+  },
+  {
+    "id": "150114",
+    "name": "La Molina",
+    "lat": -12.0863,
+    "lon": -76.9289
+  },
+  {
+    "id": "150115",
+    "name": "La Victoria",
+    "lat": -12.0743,
+    "lon": -77.0101
+  },
+  {
+    "id": "150101",
+    "name": "Lima (Cercado)",
+    "lat": -12.0465,
+    "lon": -77.0413
+  },
+  {
+    "id": "150116",
+    "name": "Lince",
+    "lat": -12.0875,
+    "lon": -77.0351
+  },
+  {
+    "id": "150117",
+    "name": "Los Olivos",
+    "lat": -11.9597,
+    "lon": -77.0764
+  },
+  {
+    "id": "150118",
+    "name": "Lurigancho",
+    "lat": -11.9703,
+    "lon": -76.8115
+  },
+  {
+    "id": "150119",
+    "name": "Lurín",
+    "lat": -12.2469,
+    "lon": -76.8328
+  },
+  {
+    "id": "150120",
+    "name": "Magdalena del Mar",
+    "lat": -12.1007,
+    "lon": -77.0675
+  },
+  {
+    "id": "150122",
+    "name": "Miraflores",
+    "lat": -12.1228,
+    "lon": -77.0389
+  },
+  {
+    "id": "150123",
+    "name": "Pachacámac",
+    "lat": -12.1607,
+    "lon": -76.7974
+  },
+  {
+    "id": "150124",
+    "name": "Pucusana",
+    "lat": -12.481,
+    "lon": -76.7927
+  },
+  {
+    "id": "150121",
+    "name": "Pueblo Libre",
+    "lat": -12.0753,
+    "lon": -77.069
+  },
+  {
+    "id": "150125",
+    "name": "Puente Piedra",
+    "lat": -11.8841,
+    "lon": -77.0947
+  },
+  {
+    "id": "150126",
+    "name": "Punta Hermosa",
+    "lat": -12.2802,
+    "lon": -76.7614
+  },
+  {
+    "id": "150127",
+    "name": "Punta Negra",
+    "lat": -12.3204,
+    "lon": -76.7351
+  },
+  {
+    "id": "150128",
+    "name": "Rímac",
+    "lat": -12.0258,
+    "lon": -77.0347
+  },
+  {
+    "id": "150129",
+    "name": "San Bartolo",
+    "lat": -12.382,
+    "lon": -76.7562
+  },
+  {
+    "id": "150130",
+    "name": "San Borja",
+    "lat": -12.0911,
+    "lon": -76.9962
+  },
+  {
+    "id": "150131",
+    "name": "San Isidro",
+    "lat": -12.1056,
+    "lon": -77.0489
+  },
+  {
+    "id": "150132",
+    "name": "San Juan de Lurigancho",
+    "lat": -11.9654,
+    "lon": -76.9721
+  },
+  {
+    "id": "150133",
+    "name": "San Juan de Miraflores",
+    "lat": -12.1454,
+    "lon": -76.9634
+  },
+  {
+    "id": "150134",
+    "name": "San Luis",
+    "lat": -12.0721,
+    "lon": -76.9993
+  },
+  {
+    "id": "150135",
+    "name": "San Martín de Porres",
+    "lat": -11.9882,
+    "lon": -77.0923
+  },
+  {
+    "id": "150136",
+    "name": "San Miguel",
+    "lat": -12.084,
+    "lon": -77.0924
+  },
+  {
+    "id": "150137",
+    "name": "Santa Anita",
+    "lat": -12.0428,
+    "lon": -76.9724
+  },
+  {
+    "id": "150138",
+    "name": "Santa María del Mar",
+    "lat": -12.4098,
+    "lon": -76.7768
+  },
+  {
+    "id": "150139",
+    "name": "Santa Rosa",
+    "lat": -11.8144,
+    "lon": -77.1789
+  },
+  {
+    "id": "150140",
+    "name": "Santiago de Surco",
+    "lat": -12.1293,
+    "lon": -76.9763
+  },
+  {
+    "id": "150141",
+    "name": "Surquillo",
+    "lat": -12.1149,
+    "lon": -77.0119
+  },
+  {
+    "id": "150142",
+    "name": "Villa El Salvador",
+    "lat": -12.2252,
+    "lon": -76.947
+  },
+  {
+    "id": "150143",
+    "name": "Villa María del Triunfo",
+    "lat": -12.1658,
+    "lon": -76.9294
+  }
+]

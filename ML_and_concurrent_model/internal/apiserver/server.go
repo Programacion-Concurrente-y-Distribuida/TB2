@@ -45,6 +45,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("GET /ws", s.hub.serveWS)
 	mux.HandleFunc("GET /api/districts", s.handleListDistricts)
 	mux.HandleFunc("GET /api/districts/predict", s.handleDistrictPredictions)
+	mux.HandleFunc("POST /api/predict/public", s.handlePredictPublic)
+	mux.HandleFunc("GET /api/stats", s.handleStats)
 
 	// Protected — wrap each group with JWT middleware
 	protected := func(method, pattern string, h http.HandlerFunc) {

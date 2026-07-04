@@ -1,7 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
-async function request(path) {
-  const res = await fetch(`${API_BASE}${path}`)
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function request(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, options)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || `Error ${res.status}`)
@@ -9,10 +11,95 @@ async function request(path) {
   return res.json()
 }
 
+function authHeaders(token) {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+}
+
+// ── public endpoints ─────────────────────────────────────────────────────────
+
 export function fetchDistricts() {
   return request('/api/districts')
 }
 
 export function fetchDistrictPredictions(pollutant) {
   return request(`/api/districts/predict?pollutant=${encodeURIComponent(pollutant)}`)
+}
+
+export function fetchHealth() {
+  return request('/api/health')
+}
+
+export function fetchStats() {
+  return request('/api/stats')
+}
+
+export function predictPublic(districtId, pollutant) {
+  return request('/api/predict/public', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ districtId, pollutant }),
+  })
+}
+
+// ── auth ─────────────────────────────────────────────────────────────────────
+
+export function login(username, password) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+// ── protected endpoints (require JWT token) ───────────────────────────────────
+
+export function startTraining({ solver = 'ridge', lambda = 1.0, maxRows = 0 }, token) {
+  return request('/api/train', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ solver, lambda, maxRows }),
+  })
+}
+
+export function getTrainStatus(jobId, token) {
+  return request(`/api/train/${encodeURIComponent(jobId)}`, {
+    headers: authHeaders(token),
+  })
+}
+
+export function getModels(token) {
+  return request('/api/models', { headers: authHeaders(token) })
+}
+
+export function getClusterNodes(token) {
+  return request('/api/cluster/nodes', { headers: authHeaders(token) })
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+
+/**
+ * Opens a WebSocket connection to /ws.
+ * Returns the WebSocket instance; call .close() to disconnect.
+ *
+ * onMessage(data) is called with the parsed JSON object for every message.
+ * onOpen / onClose / onError are optional callbacks.
+ */
+export function connectWebSocket({ onMessage, onOpen, onClose, onError } = {}) {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const base = API_BASE
+    ? API_BASE.replace(/^https?:/, proto)
+    : `${proto}//${window.location.host}`
+  const ws = new WebSocket(`${base}/ws`)
+
+  ws.onopen = () => onOpen?.()
+  ws.onclose = () => onClose?.()
+  ws.onerror = (e) => onError?.(e)
+  ws.onmessage = (e) => {
+    try {
+      onMessage?.(JSON.parse(e.data))
+    } catch {
+      // ignore malformed frames
+    }
+  }
+  return ws
 }

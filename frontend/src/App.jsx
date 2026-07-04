@@ -3,16 +3,47 @@ import MapView from './components/MapView.jsx'
 import PollutantSelector from './components/PollutantSelector.jsx'
 import Legend from './components/Legend.jsx'
 import DistrictPanel from './components/DistrictPanel.jsx'
+import LoginModal from './components/LoginModal.jsx'
+import AdminPanel from './components/AdminPanel.jsx'
+import PredictPanel from './components/PredictPanel.jsx'
+import SocialImpact from './components/SocialImpact.jsx'
 import { fetchDistrictPredictions } from './api/client.js'
+import { useWebSocket } from './hooks/useWebSocket.js'
 import './App.css'
 
+const TOKEN_KEY = 'aqsml_token'
+
+function loadToken() {
+  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
+}
+function saveToken(t) {
+  try { localStorage.setItem(TOKEN_KEY, t) } catch {}
+}
+function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY) } catch {}
+}
+
+const TABS = [
+  { id: 'map', label: 'Mapa' },
+  { id: 'predict', label: 'Predicción' },
+  { id: 'impact', label: 'Impacto Social' },
+]
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState('map')
   const [pollutant, setPollutant] = useState('PM2.5')
   const [predictions, setPredictions] = useState([])
   const [selected, setSelected] = useState(null)
-  const [status, setStatus] = useState('loading') // loading | ready | error | no-model
+  const [status, setStatus] = useState('loading')
+
+  const [token, setToken] = useState(loadToken)
+  const [showLogin, setShowLogin] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
+
+  const { connected: wsConnected, lastMessage } = useWebSocket()
 
   useEffect(() => {
+    if (activeTab !== 'map') return
     let cancelled = false
     setStatus('loading')
     fetchDistrictPredictions(pollutant)
@@ -27,46 +58,161 @@ export default function App() {
         console.error(err)
         setStatus(/entrenado/i.test(err.message) ? 'no-model' : 'error')
       })
-    return () => {
-      cancelled = true
+    return () => { cancelled = true }
+  }, [pollutant, activeTab])
+
+  useEffect(() => {
+    if (lastMessage?.type === 'trainingComplete') {
+      const t = setTimeout(() => {
+        setStatus('loading')
+        fetchDistrictPredictions(pollutant)
+          .then((data) => {
+            setPredictions(data.districts || [])
+            setSelected(null)
+            setStatus('ready')
+          })
+          .catch(() => setStatus('error'))
+      }, 1500)
+      return () => clearTimeout(t)
     }
-  }, [pollutant])
+  }, [lastMessage, pollutant])
+
+  function handleLogin(newToken) {
+    saveToken(newToken)
+    setToken(newToken)
+    setShowLogin(false)
+    setShowAdmin(true)
+  }
+
+  function handleLogout() {
+    clearToken()
+    setToken(null)
+    setShowAdmin(false)
+  }
 
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Calidad del Aire — Lima</h1>
-        <p>Prediccion de contaminacion del aire por distrito (demo academica)</p>
+        <div className="app__header-left">
+          <h1>Calidad del Aire — Lima</h1>
+          <p>Sistema distribuido de predicción de contaminación del aire por distrito</p>
+        </div>
+        <div className="app__header-right">
+          <span className={`ws-indicator ${wsConnected ? 'ws-indicator--on' : 'ws-indicator--off'}`}>
+            {wsConnected ? '● En vivo' : '○ Desconectado'}
+          </span>
+          {token ? (
+            <>
+              <button className="btn btn--sm" onClick={() => setShowAdmin(true)}>
+                Panel Admin
+              </button>
+              <button className="btn btn--sm btn--danger" onClick={handleLogout}>
+                Salir
+              </button>
+            </>
+          ) : (
+            <button className="btn btn--sm btn--outline" onClick={() => setShowLogin(true)}>
+              Admin
+            </button>
+          )}
+        </div>
       </header>
 
-      <div className="app__body">
-        <aside className="app__sidebar">
-          <PollutantSelector value={pollutant} onChange={setPollutant} />
-          <Legend />
-          <DistrictPanel district={selected} />
-        </aside>
+      <nav className="app__tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-        <main className="app__map">
-          {status === 'no-model' && (
-            <div className="app__banner">
-              Aun no hay un modelo entrenado en el backend. Ejecuta un entrenamiento
-              (POST /api/train) y vuelve a intentarlo.
-            </div>
-          )}
-          {status === 'error' && (
-            <div className="app__banner app__banner--error">
-              No se pudo conectar con el API. Verifica que el backend este corriendo.
-            </div>
-          )}
-          <MapView predictions={predictions} selectedId={selected?.id} onSelectDistrict={setSelected} />
-        </main>
-      </div>
+      {activeTab === 'map' && (
+        <div className="app__body">
+          <aside className="app__sidebar">
+            <PollutantSelector value={pollutant} onChange={setPollutant} />
+            <Legend />
+            <DistrictPanel district={selected} />
+
+            {!token && (
+              <div className="sidebar-hint">
+                <p>
+                  ¿Necesitas iniciar un entrenamiento?{' '}
+                  <button className="link-btn" onClick={() => setShowLogin(true)}>
+                    Inicia sesión
+                  </button>{' '}
+                  como administrador.
+                </p>
+              </div>
+            )}
+          </aside>
+
+          <main className="app__map">
+            {status === 'loading' && (
+              <div className="app__banner">Cargando predicciones…</div>
+            )}
+            {status === 'no-model' && (
+              <div className="app__banner">
+                Aún no hay un modelo entrenado.{' '}
+                {token ? (
+                  <button className="link-btn" onClick={() => setShowAdmin(true)}>
+                    Inicia un entrenamiento
+                  </button>
+                ) : (
+                  <>
+                    <button className="link-btn" onClick={() => setShowLogin(true)}>
+                      Inicia sesión
+                    </button>{' '}
+                    como administrador y entrena el modelo.
+                  </>
+                )}
+              </div>
+            )}
+            {status === 'error' && (
+              <div className="app__banner app__banner--error">
+                No se pudo conectar con el API. Verifica que el backend esté corriendo.
+              </div>
+            )}
+            <MapView
+              predictions={predictions}
+              selectedId={selected?.id}
+              onSelectDistrict={setSelected}
+            />
+          </main>
+        </div>
+      )}
+
+      {activeTab === 'predict' && (
+        <div className="app__content">
+          <PredictPanel />
+        </div>
+      )}
+
+      {activeTab === 'impact' && (
+        <div className="app__content">
+          <SocialImpact />
+        </div>
+      )}
 
       <footer className="app__footer">
-        Limites distritales: Instituto Geográfico Nacional (IGN) vía OCHA / Humanitarian Data Exchange
-        (CC BY-IGO). Modelo predictivo entrenado sobre datos de estaciones EPA AQS (EE.UU.) — ver README
-        para el detalle de las simplificaciones asumidas para Lima.
+        Límites distritales: IGN vía OCHA / HDX (CC BY-IGO). Modelo predictivo entrenado con datos EPA AQS —
+        sistema distribuido de ML en Go con goroutines y TCP entre nodos.
       </footer>
+
+      {showLogin && (
+        <LoginModal onLogin={handleLogin} onClose={() => setShowLogin(false)} />
+      )}
+
+      {showAdmin && token && (
+        <AdminPanel
+          token={token}
+          wsMessage={lastMessage}
+          onClose={() => setShowAdmin(false)}
+        />
+      )}
     </div>
   )
 }

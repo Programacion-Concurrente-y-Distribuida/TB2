@@ -1,5 +1,22 @@
 services:
 
+  # ── Frontend (SPA React + Nginx) ─────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # La SPA se construye con rutas relativas; Nginx proxea /api y /ws al
+        # servicio "api" en la red interna Docker.  No se necesita URL absoluta.
+        VITE_API_BASE_URL: ""
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_started
+
   # ── Infraestructura ──────────────────────────────────────────────────────────
 
   mongo:

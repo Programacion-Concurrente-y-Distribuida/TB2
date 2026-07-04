@@ -353,3 +353,214 @@ func predictionCacheKey(modelID string, numVals map[string]float64, catVals map[
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
 }
+
+// ---- POST /api/predict/public ----
+// Public endpoint: users can predict AQI for a district + pollutant without auth.
+
+type publicPredictRequest struct {
+	DistrictID string `json:"districtId"`
+	Pollutant  string `json:"pollutant"`
+}
+
+func (s *Server) handlePredictPublic(w http.ResponseWriter, r *http.Request) {
+	var req publicPredictRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+	if req.Pollutant == "" {
+		req.Pollutant = "PM2.5"
+	}
+
+	profile, ok := pollutantProfiles[req.Pollutant]
+	if !ok {
+		writeError(w, http.StatusBadRequest, "contaminante no soportado: "+req.Pollutant)
+		return
+	}
+
+	var district *limaDistrict
+	for i := range limaDistricts {
+		if limaDistricts[i].ID == req.DistrictID {
+			district = &limaDistricts[i]
+			break
+		}
+	}
+	if district == nil {
+		writeError(w, http.StatusBadRequest, "distrito no encontrado: "+req.DistrictID)
+		return
+	}
+
+	model, err := s.store.LatestModel(r.Context())
+	if err == mongo.ErrNoDocuments {
+		writeError(w, http.StatusNotFound, "ningún modelo entrenado disponible todavía")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	catValues := map[string]string{
+		"pollutant":          req.Pollutant,
+		"Parameter Code":     profile.ParameterCode,
+		"Sample Duration":    profile.SampleDuration,
+		"Event Type":         profile.EventType,
+		"Units of Measure":   profile.UnitsOfMeasure,
+		"Pollutant Standard": profile.PollutantStandard,
+	}
+	numValues := map[string]float64{
+		"Latitude":  district.Lat,
+		"Longitude": district.Lon,
+		"Year":      float64(time.Now().Year()),
+	}
+	for k, v := range profile.Numeric {
+		numValues[k] = v
+	}
+
+	x, err := aqsml.EncodeInputJSON(model.NumFeatureNames, model.PlanJSON, numValues, catValues, model.Means, model.Stds)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "error codificando features: "+err.Error())
+		return
+	}
+
+	var pred float64
+	for i, b := range model.Beta {
+		if i < len(x) {
+			pred += b * x[i]
+		}
+	}
+	if pred < 0 {
+		pred = 0
+	}
+
+	level, color := classify(profile.Breakpoints, pred)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"district":   district.Name,
+		"pollutant":  req.Pollutant,
+		"prediction": pred,
+		"unit":       profile.Unit,
+		"level":      level,
+		"color":      color,
+		"modelId":    model.ID.Hex(),
+	})
+}
+
+// ---- GET /api/stats ----
+// Returns aggregate social impact statistics based on the latest model predictions.
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	// Lima district populations (approximate, INEI 2022 census)
+	districtPop := map[string]int{
+		"150101": 276857, "150102": 51952, "150103": 693360, "150104": 33903,
+		"150105": 77111, "150106": 356950, "150107": 46213, "150108": 352208,
+		"150109": 35299, "150110": 534099, "150111": 188355, "150112": 222498,
+		"150113": 71337, "150114": 166912, "150115": 221648, "150116": 50228,
+		"150117": 370728, "150118": 220936, "150119": 97551, "150120": 54925,
+		"150121": 74523, "150122": 85065, "150123": 140803, "150124": 8161,
+		"150125": 387151, "150126": 6621, "150127": 8060, "150128": 163001,
+		"150129": 8547, "150130": 116366, "150131": 60735, "150132": 1185637,
+		"150133": 433158, "150134": 56095, "150135": 722157, "150136": 134436,
+		"150137": 204566, "150138": 1088, "150139": 13036, "150140": 348760,
+		"150141": 89283, "150142": 473523, "150143": 407997,
+	}
+
+	pollutants := []string{"PM2.5", "O3", "NO2", "CO"}
+	type levelStat struct {
+		Level      string `json:"level"`
+		Color      string `json:"color"`
+		Districts  int    `json:"districts"`
+		Population int    `json:"population"`
+	}
+
+	model, err := s.store.LatestModel(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"totalDistricts":   len(limaDistricts),
+			"totalPopulation":  11200000,
+			"modelAvailable":   false,
+			"byPollutant":      nil,
+		})
+		return
+	}
+
+	type pollutantStats struct {
+		Pollutant string      `json:"pollutant"`
+		Unit      string      `json:"unit"`
+		Levels    []levelStat `json:"levels"`
+	}
+
+	byPollutant := make([]pollutantStats, 0, len(pollutants))
+	totalPop := 0
+	for _, id := range []string{"150101"} {
+		totalPop += districtPop[id]
+	}
+	_ = totalPop
+
+	for _, pollutant := range pollutants {
+		profile := pollutantProfiles[pollutant]
+		levelMap := make(map[string]*levelStat)
+
+		for _, d := range limaDistricts {
+			catValues := map[string]string{
+				"pollutant":          pollutant,
+				"Parameter Code":     profile.ParameterCode,
+				"Sample Duration":    profile.SampleDuration,
+				"Event Type":         profile.EventType,
+				"Units of Measure":   profile.UnitsOfMeasure,
+				"Pollutant Standard": profile.PollutantStandard,
+			}
+			numValues := map[string]float64{
+				"Latitude":  d.Lat,
+				"Longitude": d.Lon,
+				"Year":      float64(time.Now().Year()),
+			}
+			for k, v := range profile.Numeric {
+				numValues[k] = v
+			}
+			x, err := aqsml.EncodeInputJSON(model.NumFeatureNames, model.PlanJSON, numValues, catValues, model.Means, model.Stds)
+			if err != nil {
+				continue
+			}
+			var pred float64
+			for i, b := range model.Beta {
+				if i < len(x) {
+					pred += b * x[i]
+				}
+			}
+			if pred < 0 {
+				pred = 0
+			}
+			level, color := classify(profile.Breakpoints, pred)
+			if _, ok := levelMap[level]; !ok {
+				levelMap[level] = &levelStat{Level: level, Color: color}
+			}
+			levelMap[level].Districts++
+			levelMap[level].Population += districtPop[d.ID]
+		}
+
+		stats := make([]levelStat, 0, len(levelMap))
+		for _, v := range levelMap {
+			stats = append(stats, *v)
+		}
+		byPollutant = append(byPollutant, pollutantStats{
+			Pollutant: pollutant,
+			Unit:      profile.Unit,
+			Levels:    stats,
+		})
+	}
+
+	totalPopAll := 0
+	for _, pop := range districtPop {
+		totalPopAll += pop
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"totalDistricts":  len(limaDistricts),
+		"totalPopulation": totalPopAll,
+		"modelAvailable":  true,
+		"modelId":         model.ID.Hex(),
+		"trainedAt":       model.TrainedAt,
+		"byPollutant":     byPollutant,
+	})
+}
