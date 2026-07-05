@@ -6,18 +6,24 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"aqsml/internal/aqsml"
 	"aqsml/internal/coordinator"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	mongoopts "go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // ---- response helpers ----
@@ -790,4 +796,230 @@ func (s *Server) handleDatasetSelect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"selected": req.Path})
+}
+
+// ---- GET /api/dataset/status (protected) ----
+
+func (s *Server) handleDatasetStatus(w http.ResponseWriter, r *http.Request) {
+	count, err := s.store.MeasurementsCount(r.Context())
+	if err != nil {
+		count = 0
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"measurementsCount": count,
+		"ready":             count > 0,
+	})
+}
+
+// ---- POST /api/dataset/migrate (protected) ----
+// Runs CSV → MongoDB migration in the background; streams progress via WebSocket.
+
+const migrateBatchSize = 2000
+
+type columnKind int
+
+const (
+	kindString columnKind = iota
+	kindInt
+	kindFloat
+	kindBool
+)
+
+var columnKinds = map[string]columnKind{
+	"State Code": kindString, "County Code": kindString, "Site Num": kindString,
+	"POC": kindInt, "Parameter Code": kindInt, "Year": kindInt,
+	"Latitude": kindFloat, "Longitude": kindFloat,
+	"Parameter Name": kindString, "Sample Duration": kindString,
+	"Pollutant Standard": kindString, "Units of Measure": kindString,
+	"Event Type": kindString, "State Name": kindString, "County Name": kindString,
+	"City Name": kindString, "CBSA Name": kindString,
+	"pollutant": kindString, "is_synthetic": kindBool,
+}
+
+func kindFor(col string) columnKind {
+	if k, ok := columnKinds[col]; ok {
+		return k
+	}
+	return kindFloat
+}
+
+func convertCell(kind columnKind, raw string) any {
+	s := strings.TrimSpace(raw)
+	missing := s == "" || strings.EqualFold(s, "nan") || strings.EqualFold(s, "null") || strings.EqualFold(s, "none")
+	switch kind {
+	case kindString:
+		return raw
+	case kindBool:
+		switch strings.ToLower(s) {
+		case "true", "1":
+			return true
+		case "false", "0":
+			return false
+		}
+		return nil
+	case kindInt:
+		if missing {
+			return nil
+		}
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) {
+			return int64(f)
+		}
+		return nil
+	case kindFloat:
+		if missing {
+			return nil
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
+			return f
+		}
+		return nil
+	}
+	return raw
+}
+
+func (s *Server) handleDatasetMigrate(w http.ResponseWriter, r *http.Request) {
+	path := s.effectiveDatasetPath(r.Context())
+	if _, err := os.Stat(path); err != nil {
+		writeError(w, http.StatusBadRequest, "dataset no encontrado: "+path)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "migrating", "path": path})
+
+	go s.runMigration(path)
+}
+
+func (s *Server) runMigration(csvPath string) {
+	ctx := context.Background()
+	broadcast := func(v any) { s.hub.Broadcast(v) }
+
+	broadcast(map[string]any{"type": "migrateStart", "path": csvPath})
+
+	// Drop existing collection
+	if err := s.store.DropMeasurements(ctx); err != nil {
+		broadcast(map[string]any{"type": "migrateError", "message": "error al limpiar colección: " + err.Error()})
+		return
+	}
+
+	f, err := os.Open(csvPath)
+	if err != nil {
+		broadcast(map[string]any{"type": "migrateError", "message": "error abriendo CSV: " + err.Error()})
+		return
+	}
+	defer f.Close()
+
+	stat, _ := f.Stat()
+	totalBytes := int64(0)
+	if stat != nil {
+		totalBytes = stat.Size()
+	}
+
+	reader := csv.NewReader(f)
+	reader.ReuseRecord = true
+
+	header, err := reader.Read()
+	if err != nil {
+		broadcast(map[string]any{"type": "migrateError", "message": "error leyendo cabecera: " + err.Error()})
+		return
+	}
+	cols := make([]string, len(header))
+	copy(cols, header)
+	kinds := make([]columnKind, len(cols))
+	for i, c := range cols {
+		kinds[i] = kindFor(c)
+	}
+
+	coll := s.store.col("measurements")
+	insertOpts := mongoopts.InsertMany().SetOrdered(false)
+
+	var inserted atomic.Int64
+	var skipped atomic.Int64
+	batches := make(chan []any, 4)
+	var wg sync.WaitGroup
+
+	// 4 workers de inserción
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for batch := range batches {
+				res, err := coll.InsertMany(ctx, batch, insertOpts)
+				if res != nil {
+					inserted.Add(int64(len(res.InsertedIDs)))
+				}
+				if err != nil {
+					var bwe mongo.BulkWriteException
+					if errors.As(err, &bwe) {
+						skipped.Add(int64(len(bwe.WriteErrors)))
+					}
+				}
+			}
+		}()
+	}
+
+	// Reporte de progreso cada 2s
+	ticker := time.NewTicker(2 * time.Second)
+	done := make(chan struct{})
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				n := inserted.Load()
+				pct := 0
+				if totalBytes > 0 {
+					// estimación aproximada basada en docs insertados vs total esperado
+					pct = int(math.Min(float64(n)/3000000*100, 99))
+				}
+				broadcast(map[string]any{
+					"type":     "migrateProgress",
+					"inserted": n,
+					"progress": pct,
+				})
+			}
+		}
+	}()
+
+	// Productor
+	batch := make([]any, 0, migrateBatchSize)
+	for {
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			skipped.Add(1)
+			continue
+		}
+		doc := make(bson.D, 0, len(cols))
+		for i, col := range cols {
+			val := ""
+			if i < len(rec) {
+				val = rec[i]
+			}
+			doc = append(doc, bson.E{Key: col, Value: convertCell(kinds[i], val)})
+		}
+		batch = append(batch, doc)
+		if len(batch) >= migrateBatchSize {
+			batches <- batch
+			batch = make([]any, 0, migrateBatchSize)
+		}
+	}
+	if len(batch) > 0 {
+		batches <- batch
+	}
+	close(batches)
+	wg.Wait()
+	close(done)
+
+	broadcast(map[string]any{
+		"type":     "migrateDone",
+		"inserted": inserted.Load(),
+		"skipped":  skipped.Load(),
+	})
 }

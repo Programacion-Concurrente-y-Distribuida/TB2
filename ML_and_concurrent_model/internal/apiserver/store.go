@@ -209,6 +209,16 @@ func (s *Store) SetDynamicNodes(ctx context.Context, nodes []string) error {
 	return s.rdb.Set(ctx, nodeListKey, data, 0).Err()
 }
 
+// MeasurementsCount returns the number of documents in the measurements collection.
+func (s *Store) MeasurementsCount(ctx context.Context) (int64, error) {
+	return s.col("measurements").EstimatedDocumentCount(ctx)
+}
+
+// DropMeasurements drops the measurements collection.
+func (s *Store) DropMeasurements(ctx context.Context) error {
+	return s.col("measurements").Drop(ctx)
+}
+
 // MeasurementsCursor opens a cursor over the measurements collection.
 // The caller must close the cursor when done.
 func (s *Store) MeasurementsCursor(ctx context.Context, limit int) (*mongo.Cursor, error) {

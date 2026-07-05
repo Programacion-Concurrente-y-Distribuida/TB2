@@ -49,6 +49,17 @@ export function selectDataset(path, token) {
   })
 }
 
+export function migrateDataset(token) {
+  return request('/api/dataset/migrate', {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+}
+
+export function getDatasetStatus(token) {
+  return request('/api/dataset/status', { headers: authHeaders(token) })
+}
+
 export function predictPublic(districtId, pollutant) {
   return request('/api/predict/public', {
     method: 'POST',

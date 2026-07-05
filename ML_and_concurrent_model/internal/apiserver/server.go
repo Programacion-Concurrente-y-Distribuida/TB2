@@ -74,6 +74,8 @@ func (s *Server) Start() error {
 	}
 	protected("GET", "/api/dataset/list", s.handleDatasetList)
 	protected("POST", "/api/dataset/select", s.handleDatasetSelect)
+	protected("POST", "/api/dataset/migrate", s.handleDatasetMigrate)
+	protected("GET", "/api/dataset/status", s.handleDatasetStatus)
 	protected("POST", "/api/train", s.handleTrain)
 	protected("GET", "/api/train/{jobId}", s.handleTrainStatus)
 	protected("GET", "/api/models", s.handleListModels)

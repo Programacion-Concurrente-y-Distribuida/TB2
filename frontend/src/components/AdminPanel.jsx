@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getClusterNodes, getModels, startTraining, setClusterNodes, resetClusterNodes, fetchDatasetInfo, listDatasets, selectDataset } from '../api/client.js'
+import { getClusterNodes, getModels, startTraining, setClusterNodes, resetClusterNodes, fetchDatasetInfo, listDatasets, selectDataset, migrateDataset, getDatasetStatus } from '../api/client.js'
 
 // ── small sub-components ──────────────────────────────────────────────────────
 
@@ -73,6 +73,9 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   const [datasetInfo, setDatasetInfo] = useState(null)
   const [datasets, setDatasets] = useState([])
   const [datasetSaving, setDatasetSaving] = useState(false)
+  const [mongoStatus, setMongoStatus] = useState({ ready: false, measurementsCount: 0 })
+  const [migrating, setMigrating] = useState(false)
+  const [migrateProgress, setMigrateProgress] = useState(null)
 
   // ── load cluster nodes ──
   const refreshNodes = useCallback(() => {
@@ -97,6 +100,7 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     refreshModels()
     fetchDatasetInfo().then(setDatasetInfo).catch(() => {})
     listDatasets(token).then(setDatasets).catch(() => {})
+    getDatasetStatus(token).then(setMongoStatus).catch(() => {})
   }, [refreshNodes, refreshModels])
 
   // ── handle WebSocket messages ──
@@ -129,7 +133,23 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       setJob((prev) => prev ? { ...prev, status: 'failed', errorMsg: message } : prev)
       setTraining(false)
     }
-  }, [wsMessage, refreshModels])
+    if (type === 'migrateStart') {
+      setMigrating(true)
+      setMigrateProgress({ inserted: 0, progress: 0, done: false, error: null })
+    }
+    if (type === 'migrateProgress') {
+      setMigrateProgress((prev) => ({ ...prev, inserted: wsMessage.inserted, progress: wsMessage.progress }))
+    }
+    if (type === 'migrateDone') {
+      setMigrating(false)
+      setMigrateProgress({ inserted: wsMessage.inserted, progress: 100, done: true, error: null })
+      getDatasetStatus(token).then(setMongoStatus).catch(() => {})
+    }
+    if (type === 'migrateError') {
+      setMigrating(false)
+      setMigrateProgress((prev) => ({ ...prev, done: true, error: wsMessage.message }))
+    }
+  }, [wsMessage, refreshModels, token])
 
   // ── add node ──
   async function handleAddNode() {
@@ -191,6 +211,17 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       setNodeError(err.message)
     } finally {
       setNodeSaving(false)
+    }
+  }
+
+  // ── migrate dataset to MongoDB ──
+  async function handleMigrate() {
+    if (migrating) return
+    setMigrateProgress(null)
+    try {
+      await migrateDataset(token)
+    } catch (err) {
+      setMigrateProgress({ inserted: 0, progress: 0, done: true, error: err.message })
     }
   }
 
@@ -304,6 +335,8 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
           <section className="admin-section">
             <h3>Dataset de Entrenamiento</h3>
 
+            {/* Paso 1: Seleccionar CSV */}
+            <p className="migrate-step-label">① Selecciona el CSV</p>
             {datasets.length > 0 && (
               <div className="dataset-selector">
                 {datasets.map((d) => (
@@ -311,7 +344,7 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                     key={d.path}
                     className={`dataset-option ${d.isSelected ? 'dataset-option--active' : ''}`}
                     onClick={() => !d.isSelected && handleSelectDataset(d.path)}
-                    disabled={datasetSaving}
+                    disabled={datasetSaving || migrating}
                     title={d.path}
                   >
                     <span className="dataset-option__name">{d.name}</span>
@@ -319,6 +352,43 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                     {d.isSelected && <span className="dataset-option__check">✓ activo</span>}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Paso 2: Migrar a MongoDB */}
+            <p className="migrate-step-label">② Cargar en MongoDB</p>
+            <div className="migrate-row">
+              <div className="mongo-status">
+                <span className={`mongo-dot ${mongoStatus.ready ? 'mongo-dot--ok' : 'mongo-dot--empty'}`} />
+                {mongoStatus.ready
+                  ? <span>{mongoStatus.measurementsCount.toLocaleString()} docs en MongoDB</span>
+                  : <span className="mongo-empty">MongoDB vacío — migra primero</span>
+                }
+              </div>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={handleMigrate}
+                disabled={migrating}
+              >
+                {migrating ? 'Migrando…' : 'Migrar CSV → MongoDB'}
+              </button>
+            </div>
+
+            {migrateProgress && (
+              <div className="migrate-progress">
+                <div className="progress-bar">
+                  <div className="progress-bar__fill" style={{ width: `${migrateProgress.progress}%` }} />
+                  <span className="progress-bar__label">{migrateProgress.progress}%</span>
+                </div>
+                {migrateProgress.done && !migrateProgress.error && (
+                  <p className="migrate-done">✓ {migrateProgress.inserted.toLocaleString()} documentos insertados</p>
+                )}
+                {migrateProgress.error && (
+                  <p className="migrate-error">{migrateProgress.error}</p>
+                )}
+                {!migrateProgress.done && (
+                  <p className="migrate-count">{migrateProgress.inserted.toLocaleString()} insertados…</p>
+                )}
               </div>
             )}
 
@@ -392,8 +462,8 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                 Máximo de filas (0 = todas)
                 <input className="form-input" type="number" min="0" step="10000" value={maxRows} onChange={(e) => setMaxRows(e.target.value)} disabled={training} />
               </label>
-              <button className="btn btn--primary" type="submit" disabled={training}>
-                {training ? 'Entrenando…' : `Iniciar con ${nodes.length} nodo${nodes.length !== 1 ? 's' : ''}`}
+              <button className="btn btn--primary" type="submit" disabled={training || !mongoStatus.ready} title={!mongoStatus.ready ? 'Primero migra el dataset a MongoDB' : ''}>
+                {training ? 'Entrenando…' : !mongoStatus.ready ? 'MongoDB vacío — migra primero' : `Iniciar con ${nodes.length} nodo${nodes.length !== 1 ? 's' : ''}`}
               </button>
             </form>
 

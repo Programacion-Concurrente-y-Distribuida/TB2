@@ -514,6 +514,54 @@
   margin-top: 0.15rem;
 }
 
+/* ── Migration ───────────────────────────────────────────────────────────── */
+
+.migrate-step-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.migrate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mongo-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: #333;
+}
+
+.mongo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mongo-dot--ok   { background: #22c55e; }
+.mongo-dot--empty { background: #d1d5db; }
+
+.mongo-empty { color: #888; }
+
+.migrate-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.migrate-done  { margin: 0; font-size: 0.8rem; color: #16a34a; }
+.migrate-error { margin: 0; font-size: 0.8rem; color: #dc2626; }
+.migrate-count { margin: 0; font-size: 0.8rem; color: #555; }
+
 /* ── Dataset info ────────────────────────────────────────────────────────── */
 
 .dataset-grid {
