@@ -19,7 +19,7 @@ export default function LoginModal({ onLogin, onClose }) {
       const { token } = await login(username, password)
       onLogin(token)
     } catch (err) {
-      setError(err.message || 'Error de autenticación')
+      setError(err.message || 'Credenciales incorrectas')
     } finally {
       setLoading(false)
     }
@@ -27,41 +27,54 @@ export default function LoginModal({ onLogin, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__header">
+      <div className="login-card" onClick={(e) => e.stopPropagation()}>
+        <div className="login-card__top">
+          <div className="login-card__icon">🔐</div>
           <h2>Acceso de Administrador</h2>
-          <button className="modal__close" onClick={onClose} aria-label="Cerrar">✕</button>
+          <p>Gestión del cluster y entrenamiento de modelos</p>
         </div>
 
-        <form className="modal__body" onSubmit={handleSubmit}>
-          {error && <p className="modal__error">{error}</p>}
+        <form className="login-card__body" onSubmit={handleSubmit}>
+          {error && (
+            <div className="modal__error">
+              <span>⚠</span> {error}
+            </div>
+          )}
 
           <label className="form-label">
             Usuario
-            <input
-              className="form-input"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={loading}
-            />
+            <div className="input-with-icon">
+              <span className="input-with-icon__icon">👤</span>
+              <input
+                className="form-input"
+                type="text"
+                autoComplete="username"
+                placeholder="Nombre de usuario"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+              />
+            </div>
           </label>
 
           <label className="form-label">
             Contraseña
-            <input
-              className="form-input"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
+            <div className="input-with-icon">
+              <span className="input-with-icon__icon">🔑</span>
+              <input
+                className="form-input"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+            </div>
           </label>
 
-          <button className="btn btn--primary" type="submit" disabled={loading}>
-            {loading ? 'Ingresando…' : 'Ingresar'}
+          <button className="login-card__submit" type="submit" disabled={loading}>
+            {loading ? 'Verificando…' : 'Ingresar al sistema'}
           </button>
         </form>
       </div>

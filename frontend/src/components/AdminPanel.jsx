@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getClusterNodes, getModels, startTraining, setClusterNodes, resetClusterNodes, fetchDatasetInfo, listDatasets, selectDataset, migrateDataset, getDatasetStatus } from '../api/client.js'
 
-// ── small sub-components ──────────────────────────────────────────────────────
-
 function NodeBadge({ node, onRemove }) {
   const ok = node.status === 'ok'
   return (
@@ -45,31 +43,24 @@ function ModelRow({ model }) {
   )
 }
 
-// ── main panel ────────────────────────────────────────────────────────────────
-
-export default function AdminPanel({ token, wsMessage, onClose }) {
-  // Cluster state
+export default function AdminPanel({ token, wsMessage, onClose, toast }) {
   const [clusterData, setClusterData] = useState({ nodes: [], usingDynamic: false, defaults: [] })
   const [nodesLoading, setNodesLoading] = useState(false)
   const [newNodeAddr, setNewNodeAddr] = useState('')
   const [nodeError, setNodeError] = useState('')
   const [nodeSaving, setNodeSaving] = useState(false)
 
-  // Models state
   const [models, setModels] = useState([])
   const [modelsLoading, setModelsLoading] = useState(false)
 
-  // Training form state
   const [solver, setSolver] = useState('ridge')
   const [lambda, setLambda] = useState(1.0)
   const [maxRows, setMaxRows] = useState(0)
   const [training, setTraining] = useState(false)
 
-  // Active job state
   const [job, setJob] = useState(null)
   const jobRef = useRef(null)
 
-  // Dataset state
   const [datasetInfo, setDatasetInfo] = useState(null)
   const [datasets, setDatasets] = useState([])
   const [datasetSaving, setDatasetSaving] = useState(false)
@@ -77,7 +68,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   const [migrating, setMigrating] = useState(false)
   const [migrateProgress, setMigrateProgress] = useState(null)
 
-  // ── load cluster nodes ──
   const refreshNodes = useCallback(() => {
     setNodesLoading(true)
     getClusterNodes(token)
@@ -86,7 +76,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       .finally(() => setNodesLoading(false))
   }, [token])
 
-  // ── load models list ──
   const refreshModels = useCallback(() => {
     setModelsLoading(true)
     getModels(token)
@@ -103,7 +92,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     getDatasetStatus(token).then(setMongoStatus).catch(() => {})
   }, [refreshNodes, refreshModels])
 
-  // ── handle WebSocket messages ──
   useEffect(() => {
     if (!wsMessage) return
     const { type, jobId, status, progress, phase, node, mae, rmse, r2, message } = wsMessage
@@ -151,7 +139,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     }
   }, [wsMessage, refreshModels, token])
 
-  // ── add node ──
   async function handleAddNode() {
     const addr = newNodeAddr.trim()
     if (!addr) return
@@ -172,6 +159,7 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       setClusterData((prev) => ({ ...prev, ...data }))
       setNewNodeAddr('')
       refreshNodes()
+      toast?.success(`Nodo ${addr} agregado`)
     } catch (err) {
       setNodeError(err.message)
     } finally {
@@ -179,7 +167,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     }
   }
 
-  // ── remove node ──
   async function handleRemoveNode(addr) {
     setNodeSaving(true)
     setNodeError('')
@@ -200,13 +187,13 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     }
   }
 
-  // ── reset to defaults ──
   async function handleResetNodes() {
     setNodeSaving(true)
     setNodeError('')
     try {
       await resetClusterNodes(token)
       refreshNodes()
+      toast?.info('Cluster restaurado a nodos Docker por defecto')
     } catch (err) {
       setNodeError(err.message)
     } finally {
@@ -214,7 +201,6 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     }
   }
 
-  // ── migrate dataset to MongoDB ──
   async function handleMigrate() {
     if (migrating) return
     setMigrateProgress(null)
@@ -222,10 +208,10 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       await migrateDataset(token)
     } catch (err) {
       setMigrateProgress({ inserted: 0, progress: 0, done: true, error: err.message })
+      toast?.error(`Error al migrar: ${err.message}`)
     }
   }
 
-  // ── select dataset ──
   async function handleSelectDataset(path) {
     setDatasetSaving(true)
     try {
@@ -233,14 +219,14 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       const [info, list] = await Promise.all([fetchDatasetInfo(), listDatasets(token)])
       setDatasetInfo(info)
       setDatasets(list)
+      toast?.success('Dataset seleccionado')
     } catch (err) {
-      console.error(err)
+      toast?.error(`Error al seleccionar dataset: ${err.message}`)
     } finally {
       setDatasetSaving(false)
     }
   }
 
-  // ── start training ──
   async function handleTrain(e) {
     e.preventDefault()
     if (training) return
@@ -253,14 +239,16 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
       )
       jobRef.current = jobId
       setJob({ jobId, status: 'pending', progress: 0, phase: null, activeNodes: [], doneNodes: [] })
+      toast?.info(`Entrenamiento iniciado con ${nodes.length} nodo${nodes.length !== 1 ? 's' : ''}`)
     } catch (err) {
       setTraining(false)
       setJob({ status: 'failed', errorMsg: err.message })
+      toast?.error(`Error al iniciar entrenamiento: ${err.message}`)
     }
   }
 
   const phaseLabel = {
-    loadingData: 'Cargando datos del CSV',
+    loadingData: 'Cargando datos de MongoDB',
     distributing: 'Distribuyendo a nodos ML',
     solving: 'Resolviendo ecuaciones normales',
   }
@@ -268,11 +256,21 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   const nodes = clusterData.nodes || []
   const usingDynamic = clusterData.usingDynamic
 
+  const step1Done = datasets.some((d) => d.isSelected)
+  const step2Done = mongoStatus.ready
+  const activeStep = !step1Done ? 1 : !step2Done ? 2 : 3
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal__header">
-          <h2>Panel de Administración</h2>
+          <div className="modal__header-left">
+            <div className="modal__header-icon">⚙</div>
+            <div>
+              <h2>Panel de Administración</h2>
+              <p>Gestión del cluster distribuido y entrenamiento de modelos ML</p>
+            </div>
+          </div>
           <button className="modal__close" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
 
@@ -280,32 +278,33 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
 
           {/* ── Cluster de Nodos ── */}
           <section className="admin-section">
-            <div className="admin-section__title">
-              <h3>
-                Cluster de Nodos ML
-                <span className={`cluster-mode ${usingDynamic ? 'cluster-mode--dynamic' : 'cluster-mode--default'}`}>
-                  {usingDynamic ? 'Configuración personalizada' : 'Nodos Docker por defecto'}
-                </span>
-              </h3>
-              <button className="btn btn--sm" onClick={refreshNodes} disabled={nodesLoading}>
-                {nodesLoading ? '…' : 'Actualizar'}
+            <div className="admin-section__header">
+              <div className="admin-section__title">
+                <div className="admin-section__icon">🖥</div>
+                <div>
+                  <h3>
+                    Cluster de Nodos ML
+                    <span className={`cluster-mode ${usingDynamic ? 'cluster-mode--dynamic' : 'cluster-mode--default'}`}>
+                      {usingDynamic ? 'Personalizado' : 'Docker por defecto'}
+                    </span>
+                  </h3>
+                  <p>Nodos TCP que reciben particiones de datos para el entrenamiento distribuido</p>
+                </div>
+              </div>
+              <button className="btn btn--sm btn--ghost" onClick={refreshNodes} disabled={nodesLoading}>
+                {nodesLoading ? '…' : '↺ Actualizar'}
               </button>
             </div>
 
             <div className="node-list">
               {nodes.length === 0 && !nodesLoading && (
-                <p className="admin-empty">Sin nodos configurados</p>
+                <p className="admin-empty">Sin nodos detectados — ¿Docker corriendo?</p>
               )}
               {nodes.map((n) => (
-                <NodeBadge
-                  key={n.addr}
-                  node={n}
-                  onRemove={handleRemoveNode}
-                />
+                <NodeBadge key={n.addr} node={n} onRemove={handleRemoveNode} />
               ))}
             </div>
 
-            {/* Agregar nodo */}
             <div className="node-add">
               <input
                 className="form-input node-add__input"
@@ -320,80 +319,109 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                 + Agregar nodo
               </button>
               {usingDynamic && (
-                <button className="btn btn--sm btn--outline" onClick={handleResetNodes} disabled={nodeSaving}>
+                <button className="btn btn--sm btn--ghost" onClick={handleResetNodes} disabled={nodeSaving}>
                   Restaurar Docker
                 </button>
               )}
             </div>
-            {nodeError && <p className="node-add__error">{nodeError}</p>}
+            {nodeError && <p className="node-add__error">⚠ {nodeError}</p>}
             <p className="node-add__hint">
-              Para agregar un nodo de red: corre <code>docker compose -f docker-compose.node.yml up</code> en la otra PC y agrega su IP aquí.
+              Para agregar un nodo externo: corre <code>docker compose -f docker-compose.node.yml up</code> en la otra PC y agrega su IP aquí.
             </p>
           </section>
 
-          {/* ── Dataset Selector + Info ── */}
+          {/* ── Dataset + Migración ── */}
           <section className="admin-section">
-            <h3>Dataset de Entrenamiento</h3>
-
-            {/* Paso 1: Seleccionar CSV */}
-            <p className="migrate-step-label">① Selecciona el CSV</p>
-            {datasets.length > 0 && (
-              <div className="dataset-selector">
-                {datasets.map((d) => (
-                  <button
-                    key={d.path}
-                    className={`dataset-option ${d.isSelected ? 'dataset-option--active' : ''}`}
-                    onClick={() => !d.isSelected && handleSelectDataset(d.path)}
-                    disabled={datasetSaving || migrating}
-                    title={d.path}
-                  >
-                    <span className="dataset-option__name">{d.name}</span>
-                    <span className="dataset-option__size">{d.sizeMB} MB</span>
-                    {d.isSelected && <span className="dataset-option__check">✓ activo</span>}
-                  </button>
-                ))}
+            <div className="admin-section__header">
+              <div className="admin-section__title">
+                <div className="admin-section__icon">🗄</div>
+                <div>
+                  <h3>Dataset de Entrenamiento</h3>
+                  <p>Selecciona el CSV, cárgalo a MongoDB y luego inicia el entrenamiento</p>
+                </div>
               </div>
-            )}
-
-            {/* Paso 2: Migrar a MongoDB */}
-            <p className="migrate-step-label">② Cargar en MongoDB</p>
-            <div className="migrate-row">
-              <div className="mongo-status">
-                <span className={`mongo-dot ${mongoStatus.ready ? 'mongo-dot--ok' : 'mongo-dot--empty'}`} />
-                {mongoStatus.ready
-                  ? <span>{mongoStatus.measurementsCount.toLocaleString()} docs en MongoDB</span>
-                  : <span className="mongo-empty">MongoDB vacío — migra primero</span>
-                }
-              </div>
-              <button
-                className="btn btn--primary btn--sm"
-                onClick={handleMigrate}
-                disabled={migrating}
-              >
-                {migrating ? 'Migrando…' : 'Migrar CSV → MongoDB'}
-              </button>
             </div>
 
-            {migrateProgress && (
-              <div className="migrate-progress">
-                <div className="progress-bar">
-                  <div className="progress-bar__fill" style={{ width: `${migrateProgress.progress}%` }} />
-                  <span className="progress-bar__label">{migrateProgress.progress}%</span>
-                </div>
-                {migrateProgress.done && !migrateProgress.error && (
-                  <p className="migrate-done">✓ {migrateProgress.inserted.toLocaleString()} documentos insertados</p>
-                )}
-                {migrateProgress.error && (
-                  <p className="migrate-error">{migrateProgress.error}</p>
-                )}
-                {!migrateProgress.done && (
-                  <p className="migrate-count">{migrateProgress.inserted.toLocaleString()} insertados…</p>
-                )}
-              </div>
-            )}
+            <div className="step-flow">
+              <span className={`step-badge ${activeStep === 1 ? 'step-badge--active' : step1Done ? 'step-badge--done' : ''}`}>
+                {step1Done ? '✓' : '①'} Seleccionar CSV
+              </span>
+              <span className="step-arrow">›</span>
+              <span className={`step-badge ${activeStep === 2 ? 'step-badge--active' : step2Done ? 'step-badge--done' : ''}`}>
+                {step2Done ? '✓' : '②'} Cargar a MongoDB
+              </span>
+              <span className="step-arrow">›</span>
+              <span className={`step-badge ${activeStep === 3 ? 'step-badge--active' : ''}`}>
+                ③ Entrenar modelo
+              </span>
+            </div>
 
+            {/* Paso 1 */}
+            <div>
+              <p className="step-label">① Seleccionar CSV</p>
+              {datasets.length === 0 && (
+                <p className="admin-empty">No se encontraron archivos CSV en el servidor.</p>
+              )}
+              {datasets.length > 0 && (
+                <div className="dataset-selector">
+                  {datasets.map((d) => (
+                    <button
+                      key={d.path}
+                      className={`dataset-option ${d.isSelected ? 'dataset-option--active' : ''}`}
+                      onClick={() => !d.isSelected && handleSelectDataset(d.path)}
+                      disabled={datasetSaving || migrating}
+                      title={d.path}
+                    >
+                      <span className="dataset-option__name">{d.name}</span>
+                      <span className="dataset-option__size">{d.sizeMB} MB</span>
+                      {d.isSelected && <span className="dataset-option__check">✓ seleccionado</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Paso 2 */}
+            <div>
+              <p className="step-label">② Cargar en MongoDB</p>
+              <div className="migrate-row">
+                <div className="mongo-status">
+                  <span className={`mongo-dot ${mongoStatus.ready ? 'mongo-dot--ok' : 'mongo-dot--empty'}`} />
+                  {mongoStatus.ready
+                    ? <span>{mongoStatus.measurementsCount.toLocaleString()} documentos en MongoDB</span>
+                    : <span className="mongo-empty">MongoDB vacío — migra primero</span>
+                  }
+                </div>
+                <button
+                  className="btn btn--sm btn--primary"
+                  onClick={handleMigrate}
+                  disabled={migrating || !step1Done}
+                  title={!step1Done ? 'Selecciona un CSV primero' : ''}
+                >
+                  {migrating ? '⟳ Migrando…' : '↑ Migrar CSV → MongoDB'}
+                </button>
+              </div>
+
+              {migrateProgress && (
+                <div className="migrate-progress">
+                  <ProgressBar value={migrateProgress.progress} />
+                  {migrateProgress.done && !migrateProgress.error && (
+                    <p className="migrate-done">✓ {migrateProgress.inserted.toLocaleString()} documentos insertados correctamente</p>
+                  )}
+                  {migrateProgress.error && (
+                    <p className="migrate-error">✕ {migrateProgress.error}</p>
+                  )}
+                  {!migrateProgress.done && (
+                    <p className="migrate-count">⟳ {migrateProgress.inserted.toLocaleString()} documentos insertados…</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Info del dataset */}
             {datasetInfo && (
-              <>
+              <div>
+                <p className="step-label">Información del CSV seleccionado</p>
                 <div className="dataset-grid">
                   <div className="dataset-stat">
                     <span className="dataset-stat__label">Archivo</span>
@@ -431,20 +459,35 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                   ))}
                 </div>
                 <details className="dataset-columns">
-                  <summary className="dataset-columns__summary">Ver {datasetInfo.columns} columnas</summary>
+                  <summary>Ver {datasetInfo.columns} columnas del dataset</summary>
                   <div className="dataset-columns__list">
                     {(datasetInfo.columnNames || []).map((c) => (
                       <code key={c} className="dataset-columns__col">{c}</code>
                     ))}
                   </div>
                 </details>
-              </>
+              </div>
             )}
           </section>
 
-          {/* ── Iniciar Entrenamiento ── */}
+          {/* ── Entrenamiento ── */}
           <section className="admin-section">
-            <h3>Iniciar Entrenamiento Distribuido</h3>
+            <div className="admin-section__header">
+              <div className="admin-section__title">
+                <div className="admin-section__icon admin-section__icon--purple">🧠</div>
+                <div>
+                  <h3>③ Iniciar Entrenamiento Distribuido</h3>
+                  <p>Regresión lineal distribuida entre {nodes.length} nodo{nodes.length !== 1 ? 's' : ''} via TCP + gob</p>
+                </div>
+              </div>
+            </div>
+
+            {!mongoStatus.ready && (
+              <div className="app__banner app__banner--warning" style={{ position: 'static', transform: 'none', maxWidth: 'none' }}>
+                ⚠ MongoDB vacío — completa los pasos anteriores antes de entrenar.
+              </div>
+            )}
+
             <form className="train-form" onSubmit={handleTrain}>
               <label className="form-label">
                 Solver
@@ -455,38 +498,43 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                 </select>
               </label>
               <label className="form-label">
-                Lambda (regularización)
+                Lambda (λ)
                 <input className="form-input" type="number" min="0" step="0.1" value={lambda} onChange={(e) => setLambda(e.target.value)} disabled={training} />
               </label>
               <label className="form-label">
-                Máximo de filas (0 = todas)
+                Máx. filas (0 = todas)
                 <input className="form-input" type="number" min="0" step="10000" value={maxRows} onChange={(e) => setMaxRows(e.target.value)} disabled={training} />
               </label>
-              <button className="btn btn--primary" type="submit" disabled={training || !mongoStatus.ready} title={!mongoStatus.ready ? 'Primero migra el dataset a MongoDB' : ''}>
-                {training ? 'Entrenando…' : !mongoStatus.ready ? 'MongoDB vacío — migra primero' : `Iniciar con ${nodes.length} nodo${nodes.length !== 1 ? 's' : ''}`}
+              <button
+                className="btn btn--primary"
+                type="submit"
+                disabled={training || !mongoStatus.ready}
+                title={!mongoStatus.ready ? 'Primero migra el dataset a MongoDB' : ''}
+              >
+                {training ? '⟳ Entrenando…' : `▶ Iniciar con ${nodes.length} nodo${nodes.length !== 1 ? 's' : ''}`}
               </button>
             </form>
 
             {job && (
               <div className="job-status">
                 <div className="job-status__row">
-                  <span className="job-status__label">Job ID:</span>
-                  <code>{job.jobId}</code>
+                  <span className="job-status__label">Job ID</span>
+                  <code title={job.jobId}>{job.jobId?.slice(0, 18)}…</code>
                 </div>
                 <div className="job-status__row">
-                  <span className="job-status__label">Estado:</span>
+                  <span className="job-status__label">Estado</span>
                   <span className={`job-badge job-badge--${job.status}`}>{job.status}</span>
                 </div>
                 {job.phase && (
                   <div className="job-status__row">
-                    <span className="job-status__label">Fase:</span>
+                    <span className="job-status__label">Fase actual</span>
                     <span>{phaseLabel[job.phase] || job.phase}</span>
                   </div>
                 )}
                 <ProgressBar value={job.progress || 0} />
                 {job.doneNodes?.length > 0 && (
                   <div className="job-status__row">
-                    <span className="job-status__label">Nodos completados:</span>
+                    <span className="job-status__label">Nodos completados</span>
                     <span>{job.doneNodes.join(', ')}</span>
                   </div>
                 )}
@@ -497,28 +545,34 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
                     <div className="metric"><span className="metric__label">RMSE</span><span className="metric__value">{job.rmse?.toFixed(4)}</span></div>
                   </div>
                 )}
-                {job.errorMsg && <p className="job-status__error">{job.errorMsg}</p>}
+                {job.errorMsg && <div className="job-status__error">✕ {job.errorMsg}</div>}
               </div>
             )}
           </section>
 
-          {/* ── Lista de Modelos ── */}
+          {/* ── Modelos entrenados ── */}
           <section className="admin-section">
-            <div className="admin-section__title">
-              <h3>Modelos Entrenados</h3>
-              <button className="btn btn--sm" onClick={refreshModels} disabled={modelsLoading}>
-                {modelsLoading ? '…' : 'Actualizar'}
+            <div className="admin-section__header">
+              <div className="admin-section__title">
+                <div className="admin-section__icon admin-section__icon--success">📈</div>
+                <div>
+                  <h3>Modelos Entrenados</h3>
+                  <p>Historial de modelos generados por el cluster</p>
+                </div>
+              </div>
+              <button className="btn btn--sm btn--ghost" onClick={refreshModels} disabled={modelsLoading}>
+                {modelsLoading ? '…' : '↺ Actualizar'}
               </button>
             </div>
             {models.length === 0 && !modelsLoading && (
-              <p className="admin-empty">No hay modelos aún.</p>
+              <p className="admin-empty">No hay modelos aún. Inicia el primer entrenamiento.</p>
             )}
             {models.length > 0 && (
               <div className="table-scroll">
                 <table className="models-table">
                   <thead>
                     <tr>
-                      <th>Job ID</th><th>Solver</th><th>R²</th><th>MAE</th><th>RMSE</th><th>Filas train</th><th>Entrenado</th>
+                      <th>Job ID</th><th>Solver</th><th>R²</th><th>MAE</th><th>RMSE</th><th>Filas train</th><th>Fecha</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -7,8 +7,11 @@ import LoginModal from './components/LoginModal.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 import PredictPanel from './components/PredictPanel.jsx'
 import SocialImpact from './components/SocialImpact.jsx'
+import ToastContainer from './components/Toast.jsx'
+import LogPanel from './components/LogPanel.jsx'
 import { fetchDistrictPredictions } from './api/client.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
+import { useToast } from './hooks/useToast.js'
 import './App.css'
 
 const TOKEN_KEY = 'aqsml_token'
@@ -24,9 +27,9 @@ function clearToken() {
 }
 
 const TABS = [
-  { id: 'map', label: 'Mapa' },
-  { id: 'predict', label: 'Predicción' },
-  { id: 'impact', label: 'Impacto Social' },
+  { id: 'map', label: '🗺 Mapa' },
+  { id: 'predict', label: '🔍 Predicción' },
+  { id: 'impact', label: '📊 Impacto Social' },
 ]
 
 export default function App() {
@@ -39,8 +42,12 @@ export default function App() {
   const [token, setToken] = useState(loadToken)
   const [showLogin, setShowLogin] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [showLogs, setShowLogs] = useState(false)
+  const [logMessages, setLogMessages] = useState([])
+  const [errorCount, setErrorCount] = useState(0)
 
   const { connected: wsConnected, lastMessage } = useWebSocket()
+  const { toasts, removeToast, toast } = useToast()
 
   useEffect(() => {
     if (activeTab !== 'map') return
@@ -62,7 +69,18 @@ export default function App() {
   }, [pollutant, activeTab])
 
   useEffect(() => {
-    if (lastMessage?.type === 'trainingComplete') {
+    if (!lastMessage) return
+
+    const entry = { ...lastMessage, ts: new Date() }
+    setLogMessages((prev) => [...prev.slice(-499), entry])
+
+    if (lastMessage.type === 'error' || lastMessage.type === 'migrateError') {
+      setErrorCount((n) => n + 1)
+      toast.error(lastMessage.message || 'Error desconocido')
+    }
+
+    if (lastMessage.type === 'trainingComplete') {
+      toast.success(`Entrenamiento completado — R²: ${lastMessage.r2?.toFixed(4)}`)
       const t = setTimeout(() => {
         setStatus('loading')
         fetchDistrictPredictions(pollutant)
@@ -75,6 +93,10 @@ export default function App() {
       }, 1500)
       return () => clearTimeout(t)
     }
+
+    if (lastMessage.type === 'migrateDone') {
+      toast.success(`Migración completada — ${lastMessage.inserted?.toLocaleString()} docs`)
+    }
   }, [lastMessage, pollutant])
 
   function handleLogin(newToken) {
@@ -82,29 +104,44 @@ export default function App() {
     setToken(newToken)
     setShowLogin(false)
     setShowAdmin(true)
+    toast.success('Sesión iniciada correctamente')
   }
 
   function handleLogout() {
     clearToken()
     setToken(null)
     setShowAdmin(false)
+    toast.info('Sesión cerrada')
+  }
+
+  function handleOpenLogs() {
+    setErrorCount(0)
+    setShowLogs(true)
   }
 
   return (
     <div className="app">
       <header className="app__header">
-        <div className="app__header-left">
-          <h1>Calidad del Aire — Lima</h1>
-          <p>Sistema distribuido de predicción de contaminación del aire por distrito</p>
+        <div className="app__header-brand">
+          <span className="app__header-brand-icon">🌫</span>
+          <div className="app__header-left">
+            <h1>Calidad del Aire — Lima</h1>
+            <p>Sistema distribuido de predicción de contaminación por distrito</p>
+          </div>
         </div>
+
         <div className="app__header-right">
           <span className={`ws-indicator ${wsConnected ? 'ws-indicator--on' : 'ws-indicator--off'}`}>
-            {wsConnected ? '● En vivo' : '○ Desconectado'}
+            {wsConnected ? 'En vivo' : 'Desconectado'}
           </span>
+          <button className="log-toggle" onClick={handleOpenLogs} title="Ver logs del sistema">
+            ⌨ Logs
+            {errorCount > 0 && <span className="log-toggle__badge">{errorCount}</span>}
+          </button>
           {token ? (
             <>
-              <button className="btn btn--sm" onClick={() => setShowAdmin(true)}>
-                Panel Admin
+              <button className="btn btn--sm btn--outline" onClick={() => setShowAdmin(true)}>
+                Admin
               </button>
               <button className="btn btn--sm btn--danger" onClick={handleLogout}>
                 Salir
@@ -112,7 +149,7 @@ export default function App() {
             </>
           ) : (
             <button className="btn btn--sm btn--outline" onClick={() => setShowLogin(true)}>
-              Admin
+              Iniciar sesión
             </button>
           )}
         </div>
@@ -136,11 +173,10 @@ export default function App() {
             <PollutantSelector value={pollutant} onChange={setPollutant} />
             <Legend />
             <DistrictPanel district={selected} />
-
             {!token && (
               <div className="sidebar-hint">
                 <p>
-                  ¿Necesitas iniciar un entrenamiento?{' '}
+                  ¿Necesitas entrenar el modelo?{' '}
                   <button className="link-btn" onClick={() => setShowLogin(true)}>
                     Inicia sesión
                   </button>{' '}
@@ -155,7 +191,7 @@ export default function App() {
               <div className="app__banner">Cargando predicciones…</div>
             )}
             {status === 'no-model' && (
-              <div className="app__banner">
+              <div className="app__banner app__banner--warning">
                 Aún no hay un modelo entrenado.{' '}
                 {token ? (
                   <button className="link-btn" onClick={() => setShowAdmin(true)}>
@@ -187,7 +223,7 @@ export default function App() {
 
       {activeTab === 'predict' && (
         <div className="app__content">
-          <PredictPanel />
+          <PredictPanel toast={toast} />
         </div>
       )}
 
@@ -200,7 +236,7 @@ export default function App() {
       <footer className="app__footer">
         <span>Sistema distribuido de ML — Go + goroutines + TCP</span>
         <div className="app__footer-sources">
-          <span className="footer-sources__label">Fuentes de datos:</span>
+          <span className="footer-sources__label">Fuentes:</span>
           <a href="https://www.datosabiertos.gob.pe/dataset/monitoreo-de-los-contaminantes-del-aire-en-lima-metropolitana-servicio-nacional-de" target="_blank" rel="noopener noreferrer">SENAMHI REMCA</a>
           <span className="footer-sources__sep">·</span>
           <a href="https://www.epa.gov/aqs" target="_blank" rel="noopener noreferrer">EPA AQS</a>
@@ -218,8 +254,12 @@ export default function App() {
           token={token}
           wsMessage={lastMessage}
           onClose={() => setShowAdmin(false)}
+          toast={toast}
         />
       )}
+
+      <LogPanel open={showLogs} onClose={() => setShowLogs(false)} messages={logMessages} />
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

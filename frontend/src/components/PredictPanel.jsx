@@ -50,15 +50,18 @@ const DISTRICTS = [
 ]
 
 const LEVEL_ADVICE = {
-  'Bueno': 'La calidad del aire es satisfactoria. Actividades al aire libre son seguras.',
-  'Moderado': 'Calidad aceptable. Personas muy sensibles deben limitar esfuerzo prolongado.',
-  'Dañino (grupos sensibles)': 'Niños, ancianos y personas con enfermedades respiratorias deben reducir actividad exterior.',
-  'Dañino': 'Toda la población puede comenzar a sentir efectos. Evitar actividad prolongada al aire libre.',
-  'Muy dañino': 'Alerta de salud. Toda la población debe evitar actividad al aire libre.',
-  'Peligroso': 'Emergencia sanitaria. Permanecer en interiores. Usar mascarilla N95 si debe salir.',
+  'Bueno': 'La calidad del aire es satisfactoria. Actividades al aire libre son completamente seguras para toda la población.',
+  'Moderado': 'Calidad aceptable. Personas muy sensibles a la contaminación deben limitar el esfuerzo prolongado al exterior.',
+  'Dañino (grupos sensibles)': 'Niños, adultos mayores y personas con enfermedades respiratorias o cardíacas deben reducir la actividad exterior.',
+  'Dañino': 'Toda la población puede comenzar a sentir efectos adversos. Evitar actividad prolongada al aire libre.',
+  'Muy dañino': 'Alerta de salud. Toda la población debe evitar actividad al aire libre. Vulnerable debe permanecer en interiores.',
+  'Peligroso': 'Emergencia sanitaria. Permanecer en interiores con ventanas cerradas. Usar mascarilla N95 si debe salir.',
 }
 
-export default function PredictPanel() {
+const AQI_LEVELS = ['Bueno', 'Moderado', 'Dañino (grupos sensibles)', 'Dañino', 'Muy dañino', 'Peligroso']
+const AQI_COLORS = ['#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7', '#7f1d1d']
+
+export default function PredictPanel({ toast }) {
   const [districtId, setDistrictId] = useState('150101')
   const [pollutant, setPollutant] = useState('PM2.5')
   const [result, setResult] = useState(null)
@@ -81,73 +84,100 @@ export default function PredictPanel() {
       setResult(data)
     } catch (err) {
       setError(err.message)
+      toast?.error(err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  const levelIdx = result ? AQI_LEVELS.indexOf(result.level) : -1
+
   return (
     <div className="predict-panel">
-      <h2 className="predict-panel__title">Consulta de Calidad del Aire</h2>
-      <p className="predict-panel__subtitle">
-        Obtén una predicción de contaminación para cualquier distrito de Lima Metropolitana.
-      </p>
+      <div className="predict-panel__heading">
+        <h2>Consulta de Calidad del Aire</h2>
+        <p>Predicción de contaminación por distrito de Lima Metropolitana usando el modelo distribuido entrenado.</p>
+      </div>
 
-      <form className="predict-form" onSubmit={handleSubmit}>
-        <div className="predict-form__row">
-          <label className="form-label">
-            Distrito
-            <select
-              className="form-input"
-              value={districtId}
-              onChange={(e) => setDistrictId(e.target.value)}
-              disabled={loading}
-            >
-              {DISTRICTS.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </label>
+      <div className="predict-layout">
+        <div className="predict-form-card">
+          <h3>Parámetros de consulta</h3>
 
-          <label className="form-label">
-            Contaminante
-            <select
-              className="form-input"
-              value={pollutant}
-              onChange={(e) => setPollutant(e.target.value)}
-              disabled={loading}
-            >
-              {POLLUTANTS.map((p) => (
-                <option key={p.id} value={p.id}>{p.label} ({p.unit})</option>
-              ))}
-            </select>
-          </label>
+          <form onSubmit={handleSubmit}>
+            <label className="form-label" style={{ marginBottom: '0.75rem' }}>
+              Distrito
+              <select
+                className="form-input"
+                value={districtId}
+                onChange={(e) => setDistrictId(e.target.value)}
+                disabled={loading}
+              >
+                {DISTRICTS.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="form-label" style={{ marginBottom: '1rem' }}>
+              Contaminante
+              <select
+                className="form-input"
+                value={pollutant}
+                onChange={(e) => setPollutant(e.target.value)}
+                disabled={loading}
+              >
+                {POLLUTANTS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label} ({p.unit})</option>
+                ))}
+              </select>
+            </label>
+
+            <button className="btn btn--primary btn--lg" type="submit" disabled={loading} style={{ width: '100%' }}>
+              {loading ? '⟳ Calculando predicción…' : '🔍 Predecir calidad del aire'}
+            </button>
+          </form>
+
+          {error && (
+            <div className="predict-error">
+              <span>⚠</span> {error}
+            </div>
+          )}
         </div>
 
-        <button className="btn btn--primary" type="submit" disabled={loading}>
-          {loading ? 'Calculando…' : 'Predecir'}
-        </button>
-      </form>
+        <div>
+          {result ? (
+            <div className="predict-result-card">
+              <div className="predict-result-card__top" style={{ background: `linear-gradient(135deg, ${result.color}dd, ${result.color})` }}>
+                <div className="predict-result-card__district">{result.district}</div>
+                <div className="predict-result-card__value">{result.prediction.toFixed(2)}</div>
+                <div className="predict-result-card__unit">{result.unit}</div>
+                <div className="predict-result-card__level">{result.level}</div>
 
-      {error && <p className="predict-panel__error">{error}</p>}
-
-      {result && (
-        <div className="predict-result" style={{ borderLeftColor: result.color }}>
-          <div className="predict-result__header">
-            <span className="predict-result__district">{result.district}</span>
-            <span className="predict-result__level" style={{ backgroundColor: result.color }}>
-              {result.level}
-            </span>
-          </div>
-          <div className="predict-result__value">
-            <span className="predict-result__number">{result.prediction.toFixed(2)}</span>
-            <span className="predict-result__unit">{result.unit}</span>
-          </div>
-          <p className="predict-result__advice">
-            {LEVEL_ADVICE[result.level] || ''}
-          </p>
+                <div className="aqi-gauge" style={{ marginTop: '1rem' }}>
+                  {AQI_LEVELS.map((lvl, i) => (
+                    <div
+                      key={lvl}
+                      className={`aqi-gauge__level ${i <= levelIdx ? 'aqi-gauge__level--active' : ''}`}
+                      style={{ background: AQI_COLORS[i] }}
+                      title={lvl}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="predict-result-card__bottom">
+                <p className="predict-result-card__advice">
+                  {LEVEL_ADVICE[result.level] || ''}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="predict-empty">
+              <div className="predict-empty__icon">🌬</div>
+              <p>Selecciona un distrito y contaminante, luego presiona <strong>Predecir</strong> para obtener el resultado del modelo ML.</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
