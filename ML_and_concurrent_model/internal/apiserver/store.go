@@ -181,6 +181,7 @@ func (s *Store) CachePrediction(ctx context.Context, key string, value float64) 
 // ---- Dynamic node list (stored in Redis) ----
 
 const nodeListKey = "cluster:nodes"
+const datasetKey = "dataset:selected"
 
 // GetDynamicNodes returns the node list stored in Redis.
 // ok=false means no dynamic list is set (caller should use defaults).
@@ -206,6 +207,26 @@ func (s *Store) SetDynamicNodes(ctx context.Context, nodes []string) error {
 	}
 	data, _ := json.Marshal(nodes)
 	return s.rdb.Set(ctx, nodeListKey, data, 0).Err()
+}
+
+// GetSelectedDataset returns the dataset path stored in Redis, or "" if none set.
+func (s *Store) GetSelectedDataset(ctx context.Context) string {
+	if s.rdb == nil {
+		return ""
+	}
+	v, err := s.rdb.Get(ctx, datasetKey).Result()
+	if err != nil {
+		return ""
+	}
+	return v
+}
+
+// SetSelectedDataset persists the chosen dataset path to Redis.
+func (s *Store) SetSelectedDataset(ctx context.Context, path string) error {
+	if s.rdb == nil {
+		return fmt.Errorf("redis no disponible")
+	}
+	return s.rdb.Set(ctx, datasetKey, path, 0).Err()
 }
 
 // ResetDynamicNodes deletes the Redis key so the default node list is used.

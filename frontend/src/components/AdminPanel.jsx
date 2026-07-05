@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getClusterNodes, getModels, startTraining, setClusterNodes, resetClusterNodes } from '../api/client.js'
+import { getClusterNodes, getModels, startTraining, setClusterNodes, resetClusterNodes, fetchDatasetInfo, listDatasets, selectDataset } from '../api/client.js'
 
 // ── small sub-components ──────────────────────────────────────────────────────
 
@@ -69,6 +69,11 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   const [job, setJob] = useState(null)
   const jobRef = useRef(null)
 
+  // Dataset state
+  const [datasetInfo, setDatasetInfo] = useState(null)
+  const [datasets, setDatasets] = useState([])
+  const [datasetSaving, setDatasetSaving] = useState(false)
+
   // ── load cluster nodes ──
   const refreshNodes = useCallback(() => {
     setNodesLoading(true)
@@ -82,7 +87,7 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   const refreshModels = useCallback(() => {
     setModelsLoading(true)
     getModels(token)
-      .then(setModels)
+      .then((data) => setModels(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setModelsLoading(false))
   }, [token])
@@ -90,6 +95,8 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
   useEffect(() => {
     refreshNodes()
     refreshModels()
+    fetchDatasetInfo().then(setDatasetInfo).catch(() => {})
+    listDatasets(token).then(setDatasets).catch(() => {})
   }, [refreshNodes, refreshModels])
 
   // ── handle WebSocket messages ──
@@ -187,6 +194,21 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
     }
   }
 
+  // ── select dataset ──
+  async function handleSelectDataset(path) {
+    setDatasetSaving(true)
+    try {
+      await selectDataset(path, token)
+      const [info, list] = await Promise.all([fetchDatasetInfo(), listDatasets(token)])
+      setDatasetInfo(info)
+      setDatasets(list)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDatasetSaving(false)
+    }
+  }
+
   // ── start training ──
   async function handleTrain(e) {
     e.preventDefault()
@@ -276,6 +298,78 @@ export default function AdminPanel({ token, wsMessage, onClose }) {
             <p className="node-add__hint">
               Para agregar un nodo de red: corre <code>docker compose -f docker-compose.node.yml up</code> en la otra PC y agrega su IP aquí.
             </p>
+          </section>
+
+          {/* ── Dataset Selector + Info ── */}
+          <section className="admin-section">
+            <h3>Dataset de Entrenamiento</h3>
+
+            {datasets.length > 0 && (
+              <div className="dataset-selector">
+                {datasets.map((d) => (
+                  <button
+                    key={d.path}
+                    className={`dataset-option ${d.isSelected ? 'dataset-option--active' : ''}`}
+                    onClick={() => !d.isSelected && handleSelectDataset(d.path)}
+                    disabled={datasetSaving}
+                    title={d.path}
+                  >
+                    <span className="dataset-option__name">{d.name}</span>
+                    <span className="dataset-option__size">{d.sizeMB} MB</span>
+                    {d.isSelected && <span className="dataset-option__check">✓ activo</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {datasetInfo && (
+              <>
+                <div className="dataset-grid">
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Archivo</span>
+                    <span className="dataset-stat__value dataset-stat__value--path" title={datasetInfo.path}>
+                      {datasetInfo.path.split('/').pop()}
+                    </span>
+                  </div>
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Tamaño</span>
+                    <span className="dataset-stat__value">{datasetInfo.fileSizeMB} MB</span>
+                  </div>
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Filas</span>
+                    <span className="dataset-stat__value">{datasetInfo.totalRows.toLocaleString()}</span>
+                  </div>
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Columnas</span>
+                    <span className="dataset-stat__value">{datasetInfo.columns}</span>
+                  </div>
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Años</span>
+                    <span className="dataset-stat__value">{datasetInfo.yearMin} – {datasetInfo.yearMax}</span>
+                  </div>
+                  <div className="dataset-stat">
+                    <span className="dataset-stat__label">Media global</span>
+                    <span className="dataset-stat__value">{datasetInfo.globalMean?.toFixed(4)}</span>
+                  </div>
+                </div>
+                <div className="dataset-pollutants">
+                  {(datasetInfo.pollutants || []).map((p) => (
+                    <div key={p.name} className="dataset-pollutant-badge">
+                      <span className="dataset-pollutant-badge__name">{p.name}</span>
+                      <span className="dataset-pollutant-badge__rows">{p.rows.toLocaleString()} obs.</span>
+                    </div>
+                  ))}
+                </div>
+                <details className="dataset-columns">
+                  <summary className="dataset-columns__summary">Ver {datasetInfo.columns} columnas</summary>
+                  <div className="dataset-columns__list">
+                    {(datasetInfo.columnNames || []).map((c) => (
+                      <code key={c} className="dataset-columns__col">{c}</code>
+                    ))}
+                  </div>
+                </details>
+              </>
+            )}
           </section>
 
           {/* ── Iniciar Entrenamiento ── */}

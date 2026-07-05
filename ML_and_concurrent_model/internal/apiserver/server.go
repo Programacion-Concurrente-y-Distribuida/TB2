@@ -27,6 +27,15 @@ type Server struct {
 	store *Store
 }
 
+// effectiveDatasetPath returns the dataset path from Redis if set,
+// otherwise falls back to cfg.InputPath.
+func (s *Server) effectiveDatasetPath(ctx context.Context) string {
+	if p := s.store.GetSelectedDataset(ctx); p != "" {
+		return p
+	}
+	return s.cfg.InputPath
+}
+
 // effectiveNodes returns the dynamic node list from Redis if set,
 // otherwise falls back to the static list in cfg.NodeAddrs.
 func (s *Server) effectiveNodes(ctx context.Context) []string {
@@ -57,11 +66,14 @@ func (s *Server) Start() error {
 	mux.HandleFunc("GET /api/districts/predict", s.handleDistrictPredictions)
 	mux.HandleFunc("POST /api/predict/public", s.handlePredictPublic)
 	mux.HandleFunc("GET /api/stats", s.handleStats)
+	mux.HandleFunc("GET /api/dataset/info", s.handleDatasetInfo)
 
 	// Protected — wrap each group with JWT middleware
 	protected := func(method, pattern string, h http.HandlerFunc) {
 		mux.Handle(method+" "+pattern, s.jwtMiddleware(h))
 	}
+	protected("GET", "/api/dataset/list", s.handleDatasetList)
+	protected("POST", "/api/dataset/select", s.handleDatasetSelect)
 	protected("POST", "/api/train", s.handleTrain)
 	protected("GET", "/api/train/{jobId}", s.handleTrainStatus)
 	protected("GET", "/api/models", s.handleListModels)

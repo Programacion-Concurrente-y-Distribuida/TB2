@@ -462,6 +462,150 @@
   opacity: 0.75;
 }
 
+/* ── Dataset selector ────────────────────────────────────────────────────── */
+
+.dataset-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dataset-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: #f7f7f7;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.dataset-option:hover:not(:disabled) {
+  border-color: #2a5bd7;
+  background: #f0f4ff;
+}
+
+.dataset-option--active {
+  border-color: #2a5bd7;
+  background: #eef4ff;
+  cursor: default;
+}
+
+.dataset-option__name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111;
+  font-family: monospace;
+}
+
+.dataset-option__size {
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: 0.1rem;
+}
+
+.dataset-option__check {
+  font-size: 0.7rem;
+  color: #2a5bd7;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+/* ── Dataset info ────────────────────────────────────────────────────────── */
+
+.dataset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.dataset-stat {
+  display: flex;
+  flex-direction: column;
+  background: #f7f7f7;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+
+.dataset-stat__label {
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dataset-stat__value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111;
+  margin-top: 0.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dataset-stat__value--path {
+  font-size: 0.78rem;
+  font-family: monospace;
+}
+
+.dataset-pollutants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.dataset-pollutant-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #eef4ff;
+  border: 1px solid #c5d9f7;
+  border-radius: 20px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.dataset-pollutant-badge__name {
+  font-weight: 600;
+  color: #2a5bd7;
+}
+
+.dataset-pollutant-badge__rows {
+  color: #555;
+}
+
+.dataset-columns {
+  margin-top: 0.25rem;
+}
+
+.dataset-columns__summary {
+  font-size: 0.78rem;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dataset-columns__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.dataset-columns__col {
+  background: #f0f0f0;
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.72rem;
+  color: #333;
+}
+
 /* ── Training form ───────────────────────────────────────────────────────── */
 
 .train-form {

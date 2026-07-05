@@ -3,10 +3,15 @@ package apiserver
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -126,7 +131,7 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 	// 1. Prepare data
 	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "loadingData"})
 	cfg := aqsml.DefaultConfig()
-	cfg.InputPath = s.cfg.InputPath
+	cfg.InputPath = s.effectiveDatasetPath(ctx)
 	cfg.MaxRows = req.MaxRows
 	cfg.Solver = req.Solver
 	cfg.RidgeLambda = req.Lambda
@@ -248,6 +253,9 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if docs == nil {
+		docs = []ModelDoc{}
 	}
 	writeJSON(w, http.StatusOK, docs)
 }
@@ -607,4 +615,168 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"trainedAt":       model.TrainedAt,
 		"byPollutant":     byPollutant,
 	})
+}
+
+// ---- GET /api/dataset/info ----
+
+func (s *Server) handleDatasetInfo(w http.ResponseWriter, r *http.Request) {
+	datasetPath := s.effectiveDatasetPath(r.Context())
+	f, err := os.Open(datasetPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "no se pudo abrir el dataset: "+err.Error())
+		return
+	}
+	defer f.Close()
+
+	stat, _ := f.Stat()
+
+	reader := csv.NewReader(f)
+	header, err := reader.Read()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "error leyendo cabecera: "+err.Error())
+		return
+	}
+
+	pollutantCol := -1
+	yearCol := -1
+	meanCol := -1
+	for i, h := range header {
+		switch h {
+		case "pollutant":
+			pollutantCol = i
+		case "Year":
+			yearCol = i
+		case "Arithmetic Mean":
+			meanCol = i
+		}
+	}
+
+	pollutantCounts := make(map[string]int)
+	yearMin, yearMax := 9999, 0
+	totalRows := 0
+	var meanSum float64
+	meanCount := 0
+
+	for {
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			continue
+		}
+		totalRows++
+		if pollutantCol >= 0 && pollutantCol < len(rec) {
+			pollutantCounts[rec[pollutantCol]]++
+		}
+		if yearCol >= 0 && yearCol < len(rec) {
+			if y, err := strconv.Atoi(rec[yearCol]); err == nil {
+				if y < yearMin { yearMin = y }
+				if y > yearMax { yearMax = y }
+			}
+		}
+		if meanCol >= 0 && meanCol < len(rec) {
+			if v, err := strconv.ParseFloat(rec[meanCol], 64); err == nil {
+				meanSum += v
+				meanCount++
+			}
+		}
+	}
+
+	type pollutantCount struct {
+		Name  string `json:"name"`
+		Rows  int    `json:"rows"`
+	}
+	pollutants := make([]pollutantCount, 0, len(pollutantCounts))
+	for k, v := range pollutantCounts {
+		pollutants = append(pollutants, pollutantCount{Name: k, Rows: v})
+	}
+
+	var globalMean *float64
+	if meanCount > 0 {
+		m := meanSum / float64(meanCount)
+		globalMean = &m
+	}
+
+	fileSizeMB := float64(0)
+	if stat != nil {
+		fileSizeMB = float64(stat.Size()) / 1024 / 1024
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":        datasetPath,
+		"fileSizeMB":  fmt.Sprintf("%.1f", fileSizeMB),
+		"totalRows":   totalRows,
+		"columns":     len(header),
+		"columnNames": header,
+		"yearMin":     yearMin,
+		"yearMax":     yearMax,
+		"pollutants":  pollutants,
+		"globalMean":  globalMean,
+	})
+}
+
+// ---- GET /api/dataset/list (protected) ----
+
+func (s *Server) handleDatasetList(w http.ResponseWriter, r *http.Request) {
+	dataDir := filepath.Dir(s.cfg.InputPath)
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "no se pudo leer el directorio de datos: "+err.Error())
+		return
+	}
+
+	type datasetEntry struct {
+		Name       string `json:"name"`
+		Path       string `json:"path"`
+		SizeMB     string `json:"sizeMB"`
+		IsSelected bool   `json:"isSelected"`
+	}
+
+	selected := s.effectiveDatasetPath(r.Context())
+	datasets := make([]datasetEntry, 0)
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".csv" {
+			continue
+		}
+		fullPath := filepath.Join(dataDir, e.Name())
+		info, err := e.Info()
+		sizeMB := "?"
+		if err == nil {
+			sizeMB = fmt.Sprintf("%.1f", float64(info.Size())/1024/1024)
+		}
+		datasets = append(datasets, datasetEntry{
+			Name:       e.Name(),
+			Path:       fullPath,
+			SizeMB:     sizeMB,
+			IsSelected: fullPath == selected,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, datasets)
+}
+
+// ---- POST /api/dataset/select (protected) ----
+
+func (s *Server) handleDatasetSelect(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "path es requerido")
+		return
+	}
+	if _, err := os.Stat(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, "archivo no encontrado: "+req.Path)
+		return
+	}
+	if err := s.store.SetSelectedDataset(r.Context(), req.Path); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"selected": req.Path})
 }

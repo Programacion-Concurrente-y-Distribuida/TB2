@@ -33,6 +33,22 @@ export function fetchStats() {
   return request('/api/stats')
 }
 
+export function fetchDatasetInfo() {
+  return request('/api/dataset/info')
+}
+
+export function listDatasets(token) {
+  return request('/api/dataset/list', { headers: authHeaders(token) })
+}
+
+export function selectDataset(path, token) {
+  return request('/api/dataset/select', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ path }),
+  })
+}
+
 export function predictPublic(districtId, pollutant) {
   return request('/api/predict/public', {
     method: 'POST',
