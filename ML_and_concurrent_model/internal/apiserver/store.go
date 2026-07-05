@@ -209,6 +209,16 @@ func (s *Store) SetDynamicNodes(ctx context.Context, nodes []string) error {
 	return s.rdb.Set(ctx, nodeListKey, data, 0).Err()
 }
 
+// MeasurementsCursor opens a cursor over the measurements collection.
+// The caller must close the cursor when done.
+func (s *Store) MeasurementsCursor(ctx context.Context, limit int) (*mongo.Cursor, error) {
+	opts := options.Find().SetNoCursorTimeout(true)
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+	return s.col("measurements").Find(ctx, bson.D{}, opts)
+}
+
 // GetSelectedDataset returns the dataset path stored in Redis, or "" if none set.
 func (s *Store) GetSelectedDataset(ctx context.Context) string {
 	if s.rdb == nil {

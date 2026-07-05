@@ -128,15 +128,26 @@ func (s *Server) runTrainingJob(jobID string, req trainRequest) {
 
 	setJob("running", 5, nil)
 
-	// 1. Prepare data
+	// 1. Prepare data — leer desde MongoDB (colección measurements)
 	broadcast(map[string]any{"type": "phase", "jobId": jobID, "phase": "loadingData"})
 	cfg := aqsml.DefaultConfig()
-	cfg.InputPath = s.effectiveDatasetPath(ctx)
-	cfg.MaxRows = req.MaxRows
 	cfg.Solver = req.Solver
 	cfg.RidgeLambda = req.Lambda
 
-	data, err := aqsml.PrepareData(cfg)
+	cursor, err := s.store.MeasurementsCursor(ctx, req.MaxRows)
+	if err != nil {
+		setJob("failed", 0, map[string]any{"error": err.Error()})
+		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": "error abriendo cursor de MongoDB: " + err.Error()})
+		return
+	}
+	rows, err := aqsml.LoadRowsFromMongo(ctx, cursor, req.MaxRows)
+	if err != nil {
+		setJob("failed", 0, map[string]any{"error": err.Error()})
+		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": "error cargando datos de MongoDB: " + err.Error()})
+		return
+	}
+
+	data, err := aqsml.PrepareDataFromRows(rows, cfg)
 	if err != nil {
 		setJob("failed", 0, map[string]any{"error": err.Error()})
 		broadcast(map[string]any{"type": "error", "jobId": jobID, "message": err.Error()})

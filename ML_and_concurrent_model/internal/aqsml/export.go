@@ -32,13 +32,18 @@ func PrepareData(cfg Config) (*PreparedData, error) {
 	if len(cfg.NumericFeatures) == 0 && len(cfg.CatFeatures) == 0 {
 		return nil, fmt.Errorf("al menos una feature requerida")
 	}
-
 	rows, _, _, err := loadCSV(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loadCSV: %w", err)
 	}
+	return PrepareDataFromRows(rows, cfg)
+}
+
+// PrepareDataFromRows is the shared encoding/split/standardize pipeline.
+// It receives pre-loaded rows (from CSV or Mongo) and returns PreparedData.
+func PrepareDataFromRows(rows []rowData, cfg Config) (*PreparedData, error) {
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("sin filas validas")
+		return nil, fmt.Errorf("sin filas válidas")
 	}
 
 	trainRows, testRows, err := splitRows(rows, cfg.TrainYearEnd)
