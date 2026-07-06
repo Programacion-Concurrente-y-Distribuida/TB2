@@ -6,7 +6,9 @@ async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, options)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Error ${res.status}`)
+    const err = new Error(body.error || `Error ${res.status}`)
+    err.status = res.status
+    throw err
   }
   return res.json()
 }

@@ -46,6 +46,7 @@ function ModelRow({ model }) {
 export default function AdminPanel({ token, wsMessage, onClose, toast }) {
   const [clusterData, setClusterData] = useState({ nodes: [], usingDynamic: false, defaults: [] })
   const [nodesLoading, setNodesLoading] = useState(false)
+  const [nodesAuthError, setNodesAuthError] = useState(false)
   const [newNodeAddr, setNewNodeAddr] = useState('')
   const [nodeError, setNodeError] = useState('')
   const [nodeSaving, setNodeSaving] = useState(false)
@@ -70,9 +71,15 @@ export default function AdminPanel({ token, wsMessage, onClose, toast }) {
 
   const refreshNodes = useCallback(() => {
     setNodesLoading(true)
+    setNodesAuthError(false)
     getClusterNodes(token)
-      .then(setClusterData)
-      .catch(() => {})
+      .then((data) => {
+        if (data && Array.isArray(data.nodes)) setClusterData(data)
+      })
+      .catch((err) => {
+        if (err.status === 401) setNodesAuthError(true)
+        console.error('refreshNodes:', err)
+      })
       .finally(() => setNodesLoading(false))
   }, [token])
 
@@ -90,7 +97,7 @@ export default function AdminPanel({ token, wsMessage, onClose, toast }) {
     fetchDatasetInfo().then(setDatasetInfo).catch(() => {})
     listDatasets(token).then(setDatasets).catch(() => {})
     getDatasetStatus(token).then(setMongoStatus).catch(() => {})
-  }, [refreshNodes, refreshModels])
+  }, [refreshNodes, refreshModels, token])
 
   useEffect(() => {
     if (!wsMessage) return
@@ -297,8 +304,13 @@ export default function AdminPanel({ token, wsMessage, onClose, toast }) {
             </div>
 
             <div className="node-list">
-              {nodes.length === 0 && !nodesLoading && (
-                <p className="admin-empty">Sin nodos detectados — ¿Docker corriendo?</p>
+              {nodesAuthError && (
+                <p className="admin-empty" style={{ color: 'var(--color-error)' }}>
+                  ⚠ Sesión expirada — cierra sesión y vuelve a entrar.
+                </p>
+              )}
+              {!nodesAuthError && nodes.length === 0 && !nodesLoading && (
+                <p className="admin-empty">Sin nodos detectados — ¿están corriendo los procesos ML?</p>
               )}
               {nodes.map((n) => (
                 <NodeBadge key={n.addr} node={n} onRemove={handleRemoveNode} />
